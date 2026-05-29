@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: #e5e7eb;
+  }
+
+  body {
+    @apply bg-white text-gray-900 antialiased;
+  }
+}
+
+@media print {
+  /* Let the page flow naturally */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* Preserve colors & borders in print */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Page margins */
+  @page {
+    margin: 0.65in 0.6in;
+    size: letter;
+  }
+
+  /* Compact table text for single-page P&L */
+  table {
+    font-size: 10.5pt;
+  }
+
+  /* Prevent mid-card page breaks */
+  .print\:break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
