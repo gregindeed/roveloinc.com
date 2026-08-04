@@ -1,9 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import AuthHeader from '@/components/AuthHeader'
 import { updateEntity } from './actions'
-import { ENTITY_TYPE_LABELS, type Client, type EntityType } from '@/lib/types'
+import { ENTITY_TYPE_LABELS, type Client } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { robots: { index: false, follow: false } }
@@ -16,33 +15,24 @@ export default async function EditEntity({
   searchParams: { error?: string }
 }) {
   const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
   const { data } = await supabase.from('clients').select('*').eq('slug', params.slug).single()
   if (!data) notFound()
   const c = data as Client
 
   return (
-    <div className="min-h-screen bg-white">
-      <AuthHeader label="Admin" email={user?.email} />
-      <main className="max-w-2xl mx-auto px-6 py-10">
-        <Link href={`/admin/clients/${c.slug}`} className="text-xs text-gray-500 hover:text-gray-900">
-          ← {c.name}
-        </Link>
-        <h1 className="text-xl font-bold text-gray-900 mt-4">Entity profile</h1>
-        <p className="text-sm text-gray-600 mt-1 mb-6">
-          The details that make this client&apos;s bookkeeping entity-aware.
-        </p>
+    <div className="max-w-2xl">
+      <h1 className="text-lg font-bold text-gray-900">Entity profile</h1>
+      <p className="text-sm text-gray-600 mt-1 mb-6">
+        The details that make this client&apos;s bookkeeping entity-aware.
+      </p>
 
-        {searchParams.error && (
-          <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
-            {searchParams.error}
-          </div>
-        )}
+      {searchParams.error && (
+        <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+          {searchParams.error}
+        </div>
+      )}
 
-        <form action={updateEntity.bind(null, c.slug)} className="space-y-6">
+      <form action={updateEntity.bind(null, c.slug)} className="space-y-6">
           <Section title="Business">
             <Field name="name" label="Business name" defaultValue={c.name} required />
             <Field name="legal_name" label="Legal name" defaultValue={c.legal_name} />
@@ -113,8 +103,7 @@ export default async function EditEntity({
               Cancel
             </Link>
           </div>
-        </form>
-      </main>
+      </form>
     </div>
   )
 }

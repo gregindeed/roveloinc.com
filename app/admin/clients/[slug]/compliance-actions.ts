@@ -17,7 +17,7 @@ async function requireAdmin() {
 }
 
 const back = (slug: string, key: 'ok' | 'warn', msg: string) =>
-  redirect(`/admin/clients/${slug}?${key}=${encodeURIComponent(msg)}`)
+  redirect(`/admin/clients/${slug}/compliance?${key}=${encodeURIComponent(msg)}`)
 
 export async function enrollObligation(slug: string, formData: FormData) {
   const supabase = await requireAdmin()
@@ -69,7 +69,7 @@ export async function enrollObligation(slug: string, formData: FormData) {
     if (evErr) back(slug, 'warn', `Obligation added, but schedule failed: ${evErr.message}`)
   }
 
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(`/admin/clients/${slug}/compliance`)
   back(slug, 'ok', `${tpl!.label} added for ${year} — ${rows.length} scheduled item${rows.length === 1 ? '' : 's'}.`)
 }
 
@@ -85,7 +85,7 @@ export async function markEventPaid(slug: string, eventId: string) {
     .from('obligation_events')
     .update({ status: 'paid', paid_date: today, amount_paid: ev?.amount_due ?? null })
     .eq('id', eventId)
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(`/admin/clients/${slug}/compliance`)
 }
 
 export async function resetEvent(slug: string, eventId: string) {
@@ -94,11 +94,11 @@ export async function resetEvent(slug: string, eventId: string) {
     .from('obligation_events')
     .update({ status: 'upcoming', paid_date: null, amount_paid: null })
     .eq('id', eventId)
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(`/admin/clients/${slug}/compliance`)
 }
 
 export async function removeObligation(slug: string, obligationId: string) {
   const supabase = await requireAdmin()
   await supabase.from('obligations').delete().eq('id', obligationId) // cascades to events
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(`/admin/clients/${slug}/compliance`)
 }
