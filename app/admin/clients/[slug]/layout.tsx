@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import AuthHeader from '@/components/AuthHeader'
 import ClientTabs from '@/components/ClientTabs'
+import EntityQuickBar from '@/components/EntityQuickBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +21,7 @@ export default async function ClientLayout({
 
   const { data: c } = await supabase
     .from('clients')
-    .select('slug, name, owner_name, address')
+    .select('*')
     .eq('slug', params.slug)
     .single()
   if (!c) notFound()
@@ -39,13 +40,22 @@ export default async function ClientLayout({
               {c.owner_name ? `${c.owner_name} · ` : ''}
               {c.address ?? ''}
             </p>
+            <EntityQuickBar c={c} />
           </div>
-          <Link
-            href={`/admin/clients/${c.slug}/edit`}
-            className="text-xs font-medium text-gray-700 hover:text-gray-900 whitespace-nowrap border border-gray-200 rounded-lg px-3 py-1.5"
-          >
-            Edit profile
-          </Link>
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <Link
+              href={`/admin/clients/${c.slug}/account`}
+              className="text-xs font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5"
+            >
+              Account details
+            </Link>
+            <Link
+              href={`/admin/clients/${c.slug}/edit`}
+              className="text-xs font-medium text-gray-700 hover:text-gray-900 border border-gray-200 rounded-lg px-3 py-1.5"
+            >
+              Edit profile
+            </Link>
+          </div>
         </div>
         <ClientTabs slug={c.slug} />
         <div className="mt-6">{children}</div>

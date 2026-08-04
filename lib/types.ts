@@ -37,6 +37,24 @@ export type Client = {
   email: string | null
   status: string | null
   notes: string | null
+  dba: string | null
+  website: string | null
+  mailing_address: string | null
+  registered_agent: string | null
+  registered_agent_address: string | null
+  accounting_method: string | null
+  employee_count: number | null
+}
+
+export type Officer = {
+  id: string
+  client_id: string
+  name: string
+  title: string | null
+  ownership_pct: number | null
+  email: string | null
+  phone: string | null
+  created_at: string
 }
 
 export type Deposit = {

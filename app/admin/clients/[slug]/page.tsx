@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import EntityFacts from '@/components/EntityFacts'
 import PeriodBar from '@/components/PeriodBar'
 import { FinancialSummary } from '@/components/Financials'
 import { parsePeriod, inPeriod } from '@/lib/period'
@@ -47,7 +46,6 @@ export default async function Overview({
           {searchParams.warn}
         </div>
       )}
-      <EntityFacts c={c} />
       <PeriodBar years={years} />
       <div>
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Summary · {period.label}</h2>
