@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PeriodBar from '@/components/PeriodBar'
 import { FinancialSummary } from '@/components/Financials'
+import AssessmentCard from '@/components/AssessmentCard'
 import { parsePeriod, inPeriod } from '@/lib/period'
 import type { Client, Deposit, CheckingExpense, CCTransaction } from '@/lib/types'
 
@@ -24,10 +25,16 @@ export default async function Overview({
   const years = [now, now - 1, now - 2, now - 3]
   const period = parsePeriod(searchParams, now)
 
-  const [{ data: deposits }, { data: checking }, { data: cc }] = await Promise.all([
+  const [{ data: deposits }, { data: checking }, { data: cc }, { data: assessment }] = await Promise.all([
     supabase.from('deposits').select('*').eq('client_id', c.id).order('txn_date'),
     supabase.from('checking_expenses').select('*').eq('client_id', c.id).order('txn_date'),
     supabase.from('cc_transactions').select('*').eq('client_id', c.id).order('post_date'),
+    supabase
+      .from('ai_assessments')
+      .select('content, model, created_at')
+      .eq('client_id', c.id)
+      .eq('scope', 'overview')
+      .maybeSingle(),
   ])
 
   const dep = ((deposits ?? []) as Deposit[]).filter((r) => inPeriod(r.txn_date, period))
@@ -46,6 +53,7 @@ export default async function Overview({
           {searchParams.warn}
         </div>
       )}
+      <AssessmentCard slug={c.slug} scope="overview" assessment={assessment} />
       <PeriodBar years={years} />
       <div>
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Summary · {period.label}</h2>
