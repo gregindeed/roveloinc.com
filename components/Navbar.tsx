@@ -5,9 +5,14 @@ export default function Navbar() {
         <a href="/" className="flex items-baseline gap-2">
           <span className="text-base font-bold tracking-tight text-gray-900">Rovelo</span>
           <span className="text-base font-normal text-gray-400" style={{ fontFamily: 'var(--font-vollkorn)', fontStyle: 'italic' }}>Inc.</span>
-          <span className="text-xs font-medium text-gray-400 tracking-wide hidden sm:inline">Corporate Solutions</span>
+          <span className="text-xs font-medium text-gray-500 tracking-wide hidden sm:inline">Business Advisory &amp; Solutions</span>
         </a>
-        <div />
+        <a
+          href="/login"
+          className="text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          Client Login
+        </a>
       </div>
     </header>
   )

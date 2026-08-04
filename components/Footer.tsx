@@ -8,11 +8,11 @@ export default function Footer() {
           <span className="text-xs font-semibold text-gray-900">Rovelo Inc.</span>
           <span className="hidden md:flex items-center gap-4">
             {links.map((l) => (
-              <span key={l} className="text-xs text-gray-400">{l}</span>
+              <span key={l} className="text-xs text-gray-500">{l}</span>
             ))}
           </span>
         </div>
-        <span className="text-xs text-gray-400">© {new Date().getFullYear()} · San Diego, CA</span>
+        <span className="text-xs text-gray-600">© {new Date().getFullYear()} · San Diego, CA</span>
       </div>
     </footer>
   )

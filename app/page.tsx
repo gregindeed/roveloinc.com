@@ -10,7 +10,7 @@ const services = [
 
 export default function Home() {
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="min-h-screen flex flex-col">
       <Navbar />
 
       {/* ── Hero ── */}
@@ -32,7 +32,7 @@ export default function Home() {
             <p className="mt-4 text-xl font-medium text-gray-500 max-w-sm leading-snug">
               Delivering solutions — financial clarity and operational systems, built for business.
             </p>
-            <p className="mt-3 flex items-center gap-1.5 text-xs text-gray-400">
+            <p className="mt-3 flex items-center gap-1.5 text-xs text-gray-600">
               <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 shrink-0" viewBox="0 0 24 24" fill="currentColor">
                 <path fillRule="evenodd" d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-2.079 3.514-4.829 3.514-8.07a6.802 6.802 0 10-13.604 0c0 3.241 1.57 5.991 3.514 8.07a19.575 19.575 0 002.682 2.282 16.975 16.975 0 001.144.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
               </svg>
@@ -42,7 +42,7 @@ export default function Home() {
 
           {/* Right: services */}
           <div className="md:w-64 lg:w-72 flex flex-col justify-center md:pl-10 pt-8 md:pt-0">
-            <p className="text-[10px] font-medium tracking-[0.2em] uppercase text-gray-400 mb-4">
+            <p className="text-[10px] font-medium tracking-[0.2em] uppercase text-gray-500 mb-4">
               What we do
             </p>
             {services.map((s, i) => (
@@ -50,10 +50,10 @@ export default function Home() {
                 key={s.num}
                 className={`flex gap-3 items-start py-3 ${i < services.length - 1 ? 'border-b border-gray-100' : ''}`}
               >
-                <span className="text-[10px] text-gray-300 font-medium pt-0.5 w-5 shrink-0">{s.num}</span>
+                <span className="text-[10px] text-gray-500 font-medium pt-0.5 w-5 shrink-0">{s.num}</span>
                 <div>
                   <p className="text-sm font-semibold text-gray-900">{s.title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{s.desc}</p>
+                  <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">{s.desc}</p>
                 </div>
               </div>
             ))}

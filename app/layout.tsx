@@ -16,7 +16,7 @@ const vollkorn = Vollkorn({
 })
 
 export const metadata: Metadata = {
-  title: 'Rovelo Inc — Financial Services',
+  title: 'Rovelo Inc — Business Advisory & Solutions',
   description: 'Bookkeeping, financial reporting, and advisory services for small businesses.',
 }
 
