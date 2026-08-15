@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { assess, overseerModel } from '@/lib/ai'
+import { logEvent, registryDigest } from '@/lib/registryServer'
 import type { Client } from '@/lib/types'
 
 async function admin() {
@@ -13,7 +14,7 @@ async function admin() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') redirect('/portal')
+  if (profile?.role !== 'admin' && profile?.role !== 'collaborator') redirect('/portal')
   return supabase
 }
 
@@ -93,14 +94,116 @@ async function buildOverviewContext(
   }
 }
 
+const CRITICAL_DOC_TYPES: { key: string; label: string }[] = [
+  { key: 'articles', label: 'Articles of Inc./Org.' },
+  { key: 'ein_letter', label: 'EIN Letter (CP-575)' },
+  { key: 'statement_of_information', label: 'Statement of Information' },
+  { key: 'sellers_permit', label: "Seller's Permit" },
+  { key: 'business_license', label: 'Business License' },
+]
+
+async function buildComplianceContext(
+  supabase: Awaited<ReturnType<typeof admin>>,
+  c: Client
+) {
+  const [{ data: obligations }, { data: events }] = await Promise.all([
+    supabase.from('obligations').select('*').eq('client_id', c.id),
+    supabase.from('obligation_events').select('*').eq('client_id', c.id).order('due_date'),
+  ])
+
+  const obs = obligations ?? []
+  const evs = events ?? []
+  const today = new Date().toISOString().slice(0, 10)
+  const open = evs.filter((e) => e.status !== 'paid' && e.status !== 'filed' && e.status !== 'waived')
+  const overdue = open
+    .filter((e) => e.due_date < today)
+    .map((e) => ({ period: e.period_label, due_date: e.due_date, amount_due: e.amount_due }))
+  const upcoming = open
+    .filter((e) => e.due_date >= today)
+    .slice(0, 8)
+    .map((e) => ({ period: e.period_label, due_date: e.due_date, amount_due: e.amount_due }))
+
+  const enrolledAgencies = Array.from(new Set(obs.map((o) => o.agency)))
+
+  return {
+    entity: { name: c.name, entity_type: c.entity_type, status: c.status },
+    obligations_enrolled: obs.map((o) => ({ label: o.label, agency: o.agency, frequency: o.frequency })),
+    enrolled_agencies: enrolledAgencies,
+    events_total: evs.length,
+    overdue_count: overdue.length,
+    overdue,
+    upcoming_count: open.filter((e) => e.due_date >= today).length,
+    upcoming_next: upcoming,
+    note:
+      obs.length === 0
+        ? 'No obligations enrolled yet — the compliance schedule is empty.'
+        : undefined,
+  }
+}
+
+async function buildDocumentsContext(
+  supabase: Awaited<ReturnType<typeof admin>>,
+  c: Client
+) {
+  const { data: documents } = await supabase
+    .from('documents')
+    .select('name, doc_type, agency, issued_date, expires_date')
+    .eq('client_id', c.id)
+
+  const docs = documents ?? []
+  const today = new Date().toISOString().slice(0, 10)
+  const byType: Record<string, number> = {}
+  for (const d of docs) byType[d.doc_type] = (byType[d.doc_type] ?? 0) + 1
+
+  const present = new Set(docs.map((d) => d.doc_type))
+  const missingCritical = CRITICAL_DOC_TYPES.filter((t) => !present.has(t.key)).map((t) => t.label)
+
+  const expired = docs
+    .filter((d) => d.expires_date && d.expires_date < today)
+    .map((d) => ({ name: d.name, doc_type: d.doc_type, expired: d.expires_date }))
+  const expiringSoon = docs
+    .filter((d) => {
+      if (!d.expires_date || d.expires_date < today) return false
+      const days = (new Date(d.expires_date).getTime() - new Date(today).getTime()) / 86400000
+      return days <= 60
+    })
+    .map((d) => ({ name: d.name, doc_type: d.doc_type, expires: d.expires_date }))
+
+  return {
+    entity: { name: c.name, entity_type: c.entity_type },
+    documents_total: docs.length,
+    count_by_type: byType,
+    missing_critical_documents: missingCritical,
+    expired_documents: expired,
+    expiring_within_60_days: expiringSoon,
+  }
+}
+
+async function buildContext(
+  supabase: Awaited<ReturnType<typeof admin>>,
+  c: Client,
+  scope: string
+) {
+  if (scope === 'compliance') return buildComplianceContext(supabase, c)
+  if (scope === 'documents') return buildDocumentsContext(supabase, c)
+  return buildOverviewContext(supabase, c)
+}
+
 export async function generateAssessment(slug: string, scope: string) {
   const supabase = await admin()
   const { data } = await supabase.from('clients').select('*').eq('slug', slug).single()
   if (!data) return
   const c = data as Client
 
-  // Only 'overview' is wired for now; other scopes reuse the same context.
-  const context = await buildOverviewContext(supabase, c)
+  const scoped = await buildContext(supabase, c, scope)
+  const briefing = (c.overseer_context ?? '').trim()
+  const digest = await registryDigest(supabase, c.id)
+  const context = {
+    ...(briefing ? { operator_briefing: briefing } : {}),
+    ...(digest.standing_facts.length ? { standing_facts: digest.standing_facts } : {}),
+    ...(digest.recent_history.length ? { recent_history: digest.recent_history } : {}),
+    ...scoped,
+  }
 
   let content: string
   try {
@@ -115,5 +218,30 @@ export async function generateAssessment(slug: string, scope: string) {
       { client_id: c.id, scope, content, model: overseerModel() },
       { onConflict: 'client_id,scope' }
     )
+  const sub = scope === 'compliance' || scope === 'documents' ? `/${scope}` : ''
+  revalidatePath(`/admin/clients/${slug}${sub}`)
+}
+
+// Save the human-written briefing the Overseer uses on every read for this entity.
+export async function updateOverseerContext(slug: string, context: string) {
+  const supabase = await admin()
+  const value = context.trim().slice(0, 4000) || null
+  const { data: c } = await supabase.from('clients').select('id').eq('slug', slug).single()
+  await supabase.from('clients').update({ overseer_context: value }).eq('slug', slug)
+  if (c?.id) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    await logEvent(supabase, c.id as string, {
+      kind: 'context',
+      source: 'operator',
+      actor: user?.email ?? 'Operator',
+      title: value ? 'Updated the Overseer briefing' : 'Cleared the Overseer briefing',
+      detail: value ? value.slice(0, 200) : null,
+      createdBy: user?.id ?? null,
+    })
+  }
   revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(`/admin/clients/${slug}/compliance`)
+  revalidatePath(`/admin/clients/${slug}/documents`)
 }

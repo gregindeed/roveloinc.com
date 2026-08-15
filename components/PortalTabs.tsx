@@ -7,8 +7,10 @@ export default function PortalTabs() {
   const path = usePathname()
   const tabs = [
     { href: '/portal', label: 'Overview', exact: true },
+    { href: '/portal/reports', label: 'Reports' },
     { href: '/portal/compliance', label: 'Compliance' },
     { href: '/portal/documents', label: 'Documents' },
+    { href: '/portal/settings', label: 'Settings' },
   ]
   return (
     <nav className="flex gap-1 border-b border-gray-200 mt-4">

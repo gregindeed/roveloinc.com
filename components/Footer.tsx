@@ -5,7 +5,9 @@ export default function Footer() {
     <footer className="border-t border-gray-100 shrink-0">
       <div className="max-w-6xl mx-auto px-6 h-11 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <span className="text-xs font-semibold text-gray-900">Rovelo Inc.</span>
+          <span className="text-sm text-gray-900" style={{ fontFamily: 'var(--font-fraunces), serif', fontWeight: 700, letterSpacing: '-0.03em' }}>
+            rovelo<span className="text-gray-400" style={{ fontWeight: 400 }}>.inc</span>
+          </span>
           <span className="hidden md:flex items-center gap-4">
             {links.map((l) => (
               <span key={l} className="text-xs text-gray-500">{l}</span>

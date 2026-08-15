@@ -11,7 +11,7 @@ async function admin() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') redirect('/portal')
+  if (profile?.role !== 'admin' && profile?.role !== 'collaborator') redirect('/portal')
   return supabase
 }
 
@@ -28,6 +28,27 @@ const N = (fd: FormData, k: string) => {
   const v = String(fd.get(k) ?? '').trim()
   return v === '' ? null : Number(v)
 }
+
+// A real calendar date in YYYY-MM-DD form (the <input type="date"> format).
+const isDate = (s: string | null): s is string =>
+  !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s))
+
+type Tab = 'transactions' | 'expenses'
+const fail = (slug: string, tab: Tab, msg: string): never =>
+  redirect(`/admin/clients/${slug}/${tab}?warn=${encodeURIComponent(msg)}`)
+
+// Shared validation for a transaction row. Returns a clean {date, description,
+// amount} or redirects with a warning. `dateKey` differs across tables.
+function requireRow(fd: FormData, slug: string, tab: Tab, dateKey = 'txn_date') {
+  const date = S(fd, dateKey)
+  const description = S(fd, 'description')
+  const amount = N(fd, 'amount')
+  if (!isDate(date)) fail(slug, tab, 'Enter a valid date (YYYY-MM-DD).')
+  if (!description) fail(slug, tab, 'A description is required.')
+  if (amount == null || !Number.isFinite(amount)) fail(slug, tab, 'Enter a valid dollar amount.')
+  return { date: date as string, description: description as string, amount: amount as number }
+}
+
 const revT = (slug: string) => revalidatePath(`/admin/clients/${slug}/transactions`)
 const revE = (slug: string) => revalidatePath(`/admin/clients/${slug}/expenses`)
 
@@ -35,36 +56,38 @@ const revE = (slug: string) => revalidatePath(`/admin/clients/${slug}/expenses`)
 export async function addDeposit(slug: string, fd: FormData) {
   const s = await admin()
   const cid = await clientId(s, slug)
-  const txn_date = S(fd, 'txn_date')
-  const description = S(fd, 'description')
-  const amount = N(fd, 'amount')
-  if (!cid || !txn_date || !description || amount == null) return
-  await s.from('deposits').insert({
+  if (!cid) fail(slug, 'transactions', 'Entity not found.')
+  const row = requireRow(fd, slug, 'transactions')
+  const { error } = await s.from('deposits').insert({
     client_id: cid,
-    txn_date,
-    description,
+    txn_date: row.date,
+    description: row.description,
     type: S(fd, 'type'),
-    category: S(fd, 'category'),
-    amount,
+    account_id: S(fd, 'account_id'),
+    amount: row.amount,
   })
+  if (error) fail(slug, 'transactions', `Could not add deposit: ${error.message}`)
   revT(slug)
 }
 export async function updateDeposit(slug: string, id: string, fd: FormData) {
   const s = await admin()
-  await s
+  const row = requireRow(fd, slug, 'transactions')
+  const { error } = await s
     .from('deposits')
     .update({
-      txn_date: S(fd, 'txn_date'),
-      description: S(fd, 'description'),
-      category: S(fd, 'category'),
-      amount: N(fd, 'amount'),
+      txn_date: row.date,
+      description: row.description,
+      account_id: S(fd, 'account_id'),
+      amount: row.amount,
     })
     .eq('id', id)
+  if (error) fail(slug, 'transactions', `Could not save deposit: ${error.message}`)
   revT(slug)
 }
 export async function deleteDeposit(slug: string, id: string) {
   const s = await admin()
-  await s.from('deposits').delete().eq('id', id)
+  const { error } = await s.from('deposits').delete().eq('id', id)
+  if (error) fail(slug, 'transactions', `Could not delete deposit: ${error.message}`)
   revT(slug)
 }
 
@@ -72,37 +95,39 @@ export async function deleteDeposit(slug: string, id: string) {
 export async function addChecking(slug: string, fd: FormData) {
   const s = await admin()
   const cid = await clientId(s, slug)
-  const txn_date = S(fd, 'txn_date')
-  const description = S(fd, 'description')
-  const amount = N(fd, 'amount')
-  if (!cid || !txn_date || !description || amount == null) return
-  await s.from('checking_expenses').insert({
+  if (!cid) fail(slug, 'expenses', 'Entity not found.')
+  const row = requireRow(fd, slug, 'expenses')
+  const { error } = await s.from('checking_expenses').insert({
     client_id: cid,
-    txn_date,
+    txn_date: row.date,
     check_num: S(fd, 'check_num'),
-    description,
-    category: S(fd, 'category'),
-    amount,
+    description: row.description,
+    account_id: S(fd, 'account_id'),
+    amount: row.amount,
   })
+  if (error) fail(slug, 'expenses', `Could not add expense: ${error.message}`)
   revE(slug)
 }
 export async function updateChecking(slug: string, id: string, fd: FormData) {
   const s = await admin()
-  await s
+  const row = requireRow(fd, slug, 'expenses')
+  const { error } = await s
     .from('checking_expenses')
     .update({
-      txn_date: S(fd, 'txn_date'),
+      txn_date: row.date,
       check_num: S(fd, 'check_num'),
-      description: S(fd, 'description'),
-      category: S(fd, 'category'),
-      amount: N(fd, 'amount'),
+      description: row.description,
+      account_id: S(fd, 'account_id'),
+      amount: row.amount,
     })
     .eq('id', id)
+  if (error) fail(slug, 'expenses', `Could not save expense: ${error.message}`)
   revE(slug)
 }
 export async function deleteChecking(slug: string, id: string) {
   const s = await admin()
-  await s.from('checking_expenses').delete().eq('id', id)
+  const { error } = await s.from('checking_expenses').delete().eq('id', id)
+  if (error) fail(slug, 'expenses', `Could not delete expense: ${error.message}`)
   revE(slug)
 }
 
@@ -110,41 +135,42 @@ export async function deleteChecking(slug: string, id: string) {
 export async function addCC(slug: string, fd: FormData) {
   const s = await admin()
   const cid = await clientId(s, slug)
-  const date = S(fd, 'date')
-  const description = S(fd, 'description')
-  const amount = N(fd, 'amount')
-  if (!cid || !date || !description || amount == null) return
-  await s.from('cc_transactions').insert({
+  if (!cid) fail(slug, 'expenses', 'Entity not found.')
+  const row = requireRow(fd, slug, 'expenses', 'date')
+  const { error } = await s.from('cc_transactions').insert({
     client_id: cid,
-    post_date: date,
-    txn_date: date,
+    post_date: row.date,
+    txn_date: row.date,
     account: S(fd, 'account'),
-    description,
-    category: S(fd, 'category'),
-    amount,
+    description: row.description,
+    account_id: S(fd, 'account_id'),
+    amount: row.amount,
     personal: fd.get('personal') === 'on',
   })
+  if (error) fail(slug, 'expenses', `Could not add card transaction: ${error.message}`)
   revE(slug)
 }
 export async function updateCC(slug: string, id: string, fd: FormData) {
   const s = await admin()
-  const date = S(fd, 'date')
-  await s
+  const row = requireRow(fd, slug, 'expenses', 'date')
+  const { error } = await s
     .from('cc_transactions')
     .update({
-      post_date: date,
-      txn_date: date,
+      post_date: row.date,
+      txn_date: row.date,
       account: S(fd, 'account'),
-      description: S(fd, 'description'),
-      category: S(fd, 'category'),
-      amount: N(fd, 'amount'),
+      description: row.description,
+      account_id: S(fd, 'account_id'),
+      amount: row.amount,
       personal: fd.get('personal') === 'on',
     })
     .eq('id', id)
+  if (error) fail(slug, 'expenses', `Could not save card transaction: ${error.message}`)
   revE(slug)
 }
 export async function deleteCC(slug: string, id: string) {
   const s = await admin()
-  await s.from('cc_transactions').delete().eq('id', id)
+  const { error } = await s.from('cc_transactions').delete().eq('id', id)
+  if (error) fail(slug, 'expenses', `Could not delete card transaction: ${error.message}`)
   revE(slug)
 }

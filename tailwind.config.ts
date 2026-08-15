@@ -8,8 +8,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['var(--font-space)', 'system-ui', 'sans-serif'],
-        vollkorn: ['var(--font-vollkorn)', 'Georgia', 'serif'],
+        sans: ['var(--font-archivo)', 'system-ui', 'sans-serif'],
+        fraunces: ['var(--font-fraunces)', 'Georgia', 'serif'],
       },
     },
   },

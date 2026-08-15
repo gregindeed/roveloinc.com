@@ -29,7 +29,7 @@ export async function importRows(
   } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Not authenticated.' }
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') return { ok: false, error: 'Not authorized.' }
+  if (profile?.role !== 'admin' && profile?.role !== 'collaborator') return { ok: false, error: 'Not authorized.' }
 
   const { data: client } = await supabase.from('clients').select('id').eq('slug', slug).single()
   if (!client) return { ok: false, error: 'Client not found.' }

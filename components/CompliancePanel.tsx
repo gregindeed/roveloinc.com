@@ -1,11 +1,5 @@
-import { TEMPLATES } from '@/lib/compliance'
 import { AGENCY_LABELS, type Obligation, type ObligationEvent } from '@/lib/types'
-import {
-  enrollObligation,
-  markEventPaid,
-  resetEvent,
-  removeObligation,
-} from '@/app/admin/clients/[slug]/compliance-actions'
+import { markEventPaid, resetEvent, removeObligation } from '@/app/admin/clients/[slug]/compliance-actions'
 
 const money = (n: number | null) =>
   n == null ? '—' : n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -26,13 +20,11 @@ export default function CompliancePanel({
   obligations,
   events,
   isAdmin,
-  currentYear,
 }: {
   slug: string
   obligations: Obligation[]
   events: ObligationEvent[]
   isAdmin: boolean
-  currentYear: number
 }) {
   const today = new Date().toISOString().slice(0, 10)
   const byOb = new Map<string, ObligationEvent[]>()
@@ -43,6 +35,9 @@ export default function CompliancePanel({
   }
 
   const openOverdue = events.filter((e) => displayStatus(e, today) === 'overdue').length
+
+  // Nothing to show until an obligation exists — keep the tab uncluttered.
+  if (obligations.length === 0) return null
 
   return (
     <div className="border border-gray-200 rounded-xl p-5">
@@ -57,49 +52,7 @@ export default function CompliancePanel({
         </h2>
       </div>
 
-      {isAdmin && (
-        <form
-          action={enrollObligation.bind(null, slug)}
-          className="flex flex-wrap items-end gap-2 mb-4 pb-4 border-b border-gray-100"
-        >
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-gray-600">Obligation</span>
-            <select name="template" className={selectCls} defaultValue="">
-              <option value="" disabled>
-                Select…
-              </option>
-              {TEMPLATES.map((t) => (
-                <option key={t.key} value={t.key}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-gray-600">Year</span>
-            <input name="year" type="number" defaultValue={currentYear} className={`${selectCls} w-24`} />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-gray-600">Amount (est.)</span>
-            <input name="amount" type="number" step="0.01" placeholder="optional" className={`${selectCls} w-32`} />
-          </label>
-          <button
-            type="submit"
-            className="rounded-lg bg-gray-900 text-white text-sm font-medium px-3.5 py-2 hover:bg-gray-800 transition-colors"
-          >
-            Add &amp; generate
-          </button>
-        </form>
-      )}
-
-      {obligations.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500">
-          {isAdmin
-            ? 'No obligations yet. Pick one above to generate its schedule.'
-            : 'No compliance items on file yet.'}
-        </div>
-      ) : (
-        <div className="space-y-5">
+      <div className="space-y-5">
           {obligations.map((ob) => {
             const evs = (byOb.get(ob.id) ?? []).sort((a, b) => a.due_date.localeCompare(b.due_date))
             return (
@@ -168,14 +121,10 @@ export default function CompliancePanel({
               </div>
             )
           })}
-        </div>
-      )}
+      </div>
     </div>
   )
 }
-
-const selectCls =
-  'border border-gray-200 rounded-lg px-2.5 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white'
 
 function StatusBadge({ status, paidDate }: { status: 'paid' | 'overdue' | 'upcoming'; paidDate: string | null }) {
   if (status === 'paid') {

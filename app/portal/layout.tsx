@@ -1,8 +1,15 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import AuthHeader from '@/components/AuthHeader'
 import PortalTabs from '@/components/PortalTabs'
 
 export const dynamic = 'force-dynamic'
+
+// The client portal is authenticated and must never be indexed. This overrides
+// the root layout's robots.index=true for every route under /portal.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+}
 
 export default async function PortalLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClient()
@@ -19,7 +26,7 @@ export default async function PortalLayout({ children }: { children: React.React
   if (!profile?.client_id) {
     return (
       <div className="min-h-screen bg-white">
-        <AuthHeader label="Client" email={user?.email} />
+        <AuthHeader label="Client Portal" email={user?.email} />
         <main className="max-w-5xl mx-auto px-6 py-10">
           <p className="text-sm text-gray-600">
             Your account isn&apos;t linked to a client yet. Please contact Rovelo Inc.
@@ -37,7 +44,7 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <div className="min-h-screen bg-white">
-      <AuthHeader label="Client" email={user?.email} />
+      <AuthHeader label="Client Portal" email={user?.email} />
       <main className="max-w-5xl mx-auto px-6 py-10">
         <div>
           <h1 className="text-xl font-bold text-gray-900">{c?.name ?? 'Your business'}</h1>

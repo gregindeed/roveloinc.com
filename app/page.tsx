@@ -1,5 +1,44 @@
+import type { Metadata } from 'next'
 import Navbar from '@/components/Navbar'
 import Footer from '@/components/Footer'
+import Analytics from '@/components/Analytics'
+
+export const dynamic = 'force-dynamic'
+
+// Homepage inherits title/description/OpenGraph from the root layout; here we
+// just pin the canonical URL to the apex.
+export const metadata: Metadata = {
+  alternates: { canonical: '/' },
+}
+
+// Structured data (schema.org). Traditional search engines use this for rich
+// results; generative/AI answer engines read it to understand who Rovelo is and
+// what it does — the "GEO" half of SEO/GEO.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'AccountingService',
+  name: 'Rovelo Inc',
+  legalName: 'Rovelo Inc',
+  description:
+    'Business advisory and solutions for small businesses: bookkeeping, financial reporting, tax preparation, and payroll.',
+  url: 'https://roveloinc.com',
+  image: 'https://roveloinc.com/rovelo_icon.png',
+  logo: 'https://roveloinc.com/rovelo_icon.png',
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: 'San Diego',
+    addressRegion: 'CA',
+    addressCountry: 'US',
+  },
+  areaServed: { '@type': 'Country', name: 'United States' },
+  knowsAbout: ['Bookkeeping', 'Financial Reporting', 'Tax Preparation', 'Payroll', 'Business Advisory'],
+  makesOffer: [
+    { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Bookkeeping', description: 'Monthly reconciliation and clean, reliable records.' } },
+    { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Financial Reporting', description: 'P&L, balance sheets, and cash flow on your schedule.' } },
+    { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Tax Preparation', description: 'Year-end filings and quarterly estimates, on time.' } },
+    { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Payroll', description: 'Processing, filings, and compliance—handled.' } },
+  ],
+}
 
 const services = [
   { num: '01', title: 'Bookkeeping', desc: 'Monthly reconciliation and clean, reliable records.' },
@@ -11,6 +50,12 @@ const services = [
 export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
+      {/* GA4 — homepage only (see components/Analytics.tsx) */}
+      <Analytics />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <Navbar />
 
       {/* ── Hero ── */}
@@ -24,10 +69,18 @@ export default function Home() {
               <span className="text-xs font-medium text-gray-500 tracking-wide">Business Advisory &amp; Solutions</span>
             </div>
             <h1
-              className="font-sans font-extrabold text-gray-900 leading-[0.9] tracking-tight"
-              style={{ fontSize: 'clamp(3rem, 8vw, 7rem)' }}
+              className="text-gray-900 leading-[0.9]"
+              style={{
+                fontFamily: 'var(--font-fraunces), serif',
+                fontWeight: 700,
+                letterSpacing: '-0.03em',
+                fontSize: 'clamp(3rem, 8vw, 7rem)',
+              }}
             >
-              ROVELO <span className="text-gray-300" style={{ fontFamily: 'var(--font-vollkorn)', fontStyle: 'italic', fontWeight: 400 }}>Inc.</span>
+              rovelo<span
+                className="text-gray-300"
+                style={{ fontWeight: 400 }}
+              >.inc</span>
             </h1>
             <p className="mt-4 text-xl font-medium text-gray-500 max-w-sm leading-snug">
               Delivering solutions — financial clarity and operational systems, built for business.

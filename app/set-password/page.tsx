@@ -14,13 +14,12 @@ export default function SetPasswordPage({
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
       <div className="w-full max-w-sm">
-        <div className="flex items-baseline gap-2 justify-center mb-8">
-          <span className="text-xl font-bold tracking-tight text-gray-900">Rovelo</span>
+        <div className="flex items-baseline justify-center mb-8">
           <span
-            className="text-xl font-normal text-gray-400"
-            style={{ fontFamily: 'var(--font-vollkorn)', fontStyle: 'italic' }}
+            className="text-2xl text-gray-900"
+            style={{ fontFamily: 'var(--font-fraunces), serif', fontWeight: 700, letterSpacing: '-0.03em' }}
           >
-            Inc.
+            rovelo<span className="text-gray-400" style={{ fontWeight: 400 }}>.inc</span>
           </span>
         </div>
 
@@ -65,7 +64,7 @@ export default function SetPasswordPage({
           </div>
           <button
             type="submit"
-            className="w-full rounded-lg bg-gray-900 text-white text-sm font-medium py-2.5 hover:bg-gray-800 transition-colors"
+            className="w-full text-center text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors"
           >
             Save password &amp; continue
           </button>

@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
-import BooksView from '@/components/BooksView'
+import PortalFinancials from '@/components/PortalFinancials'
 import EntityFacts from '@/components/EntityFacts'
-import type { Client, Deposit, CheckingExpense, CCTransaction } from '@/lib/types'
+import { getChartOfAccounts } from '@/lib/coaServer'
+import type { Client, Deposit, CheckingExpense, CCTransaction, SalesEntry } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 export const metadata = {
@@ -29,21 +30,25 @@ export default async function PortalOverview() {
     .single()
 
   // RLS returns only the signed-in client's own rows.
-  const [{ data: deposits }, { data: checking }, { data: cc }] = await Promise.all([
+  const [{ data: deposits }, { data: checking }, { data: cc }, accounts, { data: sales }] = await Promise.all([
     supabase.from('deposits').select('*').order('txn_date'),
     supabase.from('checking_expenses').select('*').order('txn_date'),
     supabase.from('cc_transactions').select('*').order('post_date'),
+    // Chart of accounts — cached (tag-invalidated on edits). clientId comes from
+    // the viewer's own profile, so this is scoped to their entity.
+    getChartOfAccounts(profile.client_id),
+    supabase.from('sales_entries').select('*').eq('status', 'posted').order('entry_date'),
   ])
 
   return (
     <div className="space-y-8">
       <EntityFacts c={client as Client} />
-      <BooksView
-        client={client as Client}
+      <PortalFinancials
         deposits={(deposits ?? []) as Deposit[]}
         checking={(checking ?? []) as CheckingExpense[]}
         cc={(cc ?? []) as CCTransaction[]}
-        showHeader={false}
+        accounts={accounts}
+        salesEntries={(sales ?? []) as SalesEntry[]}
       />
     </div>
   )

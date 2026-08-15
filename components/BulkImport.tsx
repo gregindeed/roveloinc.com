@@ -277,7 +277,7 @@ export default function BulkImport({ slug, initialTarget }: { slug: string; init
           <button
             onClick={commit}
             disabled={busy || preview.rows.length === 0}
-            className="rounded-lg bg-gray-900 text-white text-sm font-medium px-4 py-2.5 hover:bg-gray-800 disabled:opacity-50"
+            className="text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors disabled:opacity-50 disabled:hover:text-gray-900"
           >
             {busy ? 'Importing…' : `Import ${preview.rows.length} row${preview.rows.length === 1 ? '' : 's'} into ${TARGET_LABEL[target]}`}
           </button>

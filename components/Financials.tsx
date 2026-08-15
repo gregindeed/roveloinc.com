@@ -1,18 +1,11 @@
-import type { Deposit, CheckingExpense, CCTransaction } from '@/lib/types'
+import type { Deposit, CheckingExpense, CCTransaction, Account } from '@/lib/types'
+import { computePnl } from '@/lib/pnl'
+import PnlStatement from '@/components/PnlStatement'
 
 const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 const fmtDate = (iso: string) => {
   const [y, m, d] = iso.split('-')
   return `${m}/${d}/${y.slice(2)}`
-}
-
-function sumByCategory<T extends { category: string | null; amount: number }>(rows: T[]) {
-  const map = new Map<string, number>()
-  for (const r of rows) {
-    const key = r.category || 'Uncategorized'
-    map.set(key, (map.get(key) || 0) + Number(r.amount))
-  }
-  return [...map.entries()].sort((a, b) => b[1] - a[1])
 }
 
 function Empty({ label }: { label: string }) {
@@ -29,46 +22,19 @@ export function FinancialSummary({
   deposits,
   checking,
   cc,
+  accounts,
   periodLabel,
+  slug,
 }: {
   deposits: Deposit[]
   checking: CheckingExpense[]
   cc: CCTransaction[]
+  accounts: Account[]
   periodLabel: string
+  slug: string
 }) {
-  const income = deposits.reduce((a, r) => a + Number(r.amount), 0)
-  const expenses = checking.reduce((a, r) => a + Number(r.amount), 0)
-  const net = income - expenses
-  const personal = cc.filter((r) => r.personal).reduce((a, r) => a + Number(r.amount), 0)
-  const incomeByCat = sumByCategory(deposits)
-  const expenseByCat = sumByCategory(checking)
-
-  if (deposits.length === 0 && checking.length === 0 && cc.length === 0) {
-    return <Empty label={`No financial activity in ${periodLabel}.`} />
-  }
-
-  return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Tile label="Total Deposits" value={money(income)} tone="pos" />
-        <Tile label="Expenses" value={money(expenses)} tone="neg" />
-        <Tile label="Net (Dep − Exp)" value={money(net)} tone={net >= 0 ? 'pos' : 'neg'} />
-        <Tile label="Personal Charges" value={money(personal)} tone="warn" />
-      </div>
-
-      {personal > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <strong>{money(personal)}</strong> in personal charges are flagged in this period for
-          owner reimbursement or reclassification.
-        </div>
-      )}
-
-      <div className="grid md:grid-cols-2 gap-8">
-        <CategoryTable title="Income by category" rows={incomeByCat} total={income} />
-        <CategoryTable title="Expenses by category" rows={expenseByCat} total={expenses} />
-      </div>
-    </div>
-  )
+  const pnl = computePnl(deposits, checking, cc, accounts)
+  return <PnlStatement pnl={pnl} periodLabel={periodLabel} categorizeHref={`/admin/clients/${slug}/expenses`} />
 }
 
 /* ---------------- Transactions (deposits) ---------------- */
@@ -155,38 +121,6 @@ export function ExpensesTables({
 }
 
 /* ---------------- shared bits ---------------- */
-
-function Tile({ label, value, tone }: { label: string; value: string; tone: 'pos' | 'neg' | 'warn' }) {
-  const color = tone === 'pos' ? 'text-green-700' : tone === 'neg' ? 'text-gray-900' : 'text-amber-700'
-  return (
-    <div className="rounded-lg border border-gray-200 p-4">
-      <div className={`text-lg font-bold ${color}`}>{value}</div>
-      <div className="text-[11px] uppercase tracking-wide text-gray-500 mt-1">{label}</div>
-    </div>
-  )
-}
-
-function CategoryTable({ title, rows, total }: { title: string; rows: [string, number][]; total: number }) {
-  return (
-    <div>
-      <h2 className="text-sm font-semibold text-gray-900 mb-2">{title}</h2>
-      <table className="w-full text-sm">
-        <tbody>
-          {rows.map(([cat, amt]) => (
-            <tr key={cat} className="border-b border-gray-100">
-              <td className="py-1.5 text-gray-700">{cat}</td>
-              <td className="py-1.5 text-right text-gray-900 tabular-nums">{money(amt)}</td>
-            </tr>
-          ))}
-          <tr className="border-t border-gray-300 font-semibold">
-            <td className="py-1.5 text-gray-900">Total</td>
-            <td className="py-1.5 text-right text-gray-900 tabular-nums">{money(total)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  )
-}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

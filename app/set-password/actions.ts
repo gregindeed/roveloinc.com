@@ -22,5 +22,9 @@ export async function setPassword(formData: FormData) {
   const { error } = await supabase.auth.updateUser({ password })
   if (error) redirect(`/set-password?error=${encodeURIComponent(error.message)}`)
 
-  redirect('/portal')
+  // Send them where they belong, so a new manager/collaborator doesn't dead-end
+  // on the portal's "no client linked" screen.
+  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const role = profile?.role ?? null
+  redirect(role === 'admin' || role === 'collaborator' ? '/admin' : '/portal')
 }

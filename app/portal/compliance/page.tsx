@@ -35,7 +35,6 @@ export default async function PortalCompliance() {
       obligations={(obligations ?? []) as Obligation[]}
       events={(events ?? []) as ObligationEvent[]}
       isAdmin={false}
-      currentYear={new Date().getFullYear()}
     />
   )
 }

@@ -12,6 +12,11 @@
   }
 }
 
+/* Shown only in the printed / PDF version (e.g. the entity sheet letterhead). */
+.print-only {
+  display: none;
+}
+
 @media print {
   /* Let the page flow naturally */
   html, body {
@@ -24,6 +29,165 @@
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  /* Elements marked no-print never print */
+  .no-print { display: none !important; }
+
+  /* Entity info sheet: when the settings page is open, print ONLY the sheet.
+     Scoped to body.printing-sheet so other printable pages are unaffected. */
+  body.printing-sheet * { visibility: hidden; }
+  body.printing-sheet #entity-sheet, body.printing-sheet #entity-sheet * { visibility: visible; }
+  body.printing-sheet #entity-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  body.printing-sheet .print-only { display: block !important; }
+
+  /* ===== Entity information sheet — print document ===== */
+  .entity-doc {
+    color: #1f2937;
+    font-size: 9pt;
+    line-height: 1.35;
+    font-family: var(--font-archivo), system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    padding-bottom: 34pt; /* clear the fixed footer */
+  }
+
+  /* Top label strip (no logo) */
+  .entity-doc .doc-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid #d1d5db;
+    padding-bottom: 7pt;
+  }
+  .entity-doc .doc-head-label {
+    font-size: 8pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: #111827;
+  }
+  .entity-doc .doc-head-conf {
+    font-size: 8pt;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #9ca3af;
+  }
+
+  /* Title + status */
+  .entity-doc .doc-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 16pt;
+  }
+  .entity-doc .doc-title {
+    font-size: 26pt;
+    font-weight: 700;
+    line-height: 1.02;
+    margin: 0;
+    letter-spacing: -0.025em;
+    color: #111827;
+  }
+  .entity-doc .doc-subtitle {
+    font-size: 7.5pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-top: 7pt;
+  }
+  .entity-doc .doc-status {
+    border: 1px solid #111827;
+    border-radius: 999px;
+    padding: 3pt 9pt;
+    font-size: 7pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #111827;
+  }
+  .entity-doc .doc-status-dot { color: #16a34a; }
+
+  /* Key facts strip */
+  .entity-doc .doc-keyfacts {
+    display: flex;
+    margin-top: 16pt;
+    padding: 10pt 0;
+    border-top: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .entity-doc .doc-keyfacts > div { flex: 1; padding-right: 12pt; }
+  .entity-doc .doc-keyfacts span {
+    display: block;
+    font-size: 6.5pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9ca3af;
+    margin-bottom: 3pt;
+  }
+  .entity-doc .doc-keyfacts b {
+    font-size: 12pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #111827;
+  }
+
+  /* Two columns */
+  .entity-doc .doc-cols { display: flex; gap: 34pt; margin-top: 16pt; }
+  .entity-doc .doc-col { flex: 1; min-width: 0; }
+  .entity-doc .doc-section { margin-bottom: 15pt; break-inside: avoid; }
+  .entity-doc .doc-section-title {
+    font-size: 7pt;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #111827;
+    padding-bottom: 4pt;
+    border-bottom: 1px solid #cbd5e1;
+    margin-bottom: 5pt;
+  }
+  .entity-doc .doc-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12pt;
+    padding: 3.5pt 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .entity-doc .doc-section .doc-row:last-child { border-bottom: none; }
+  .entity-doc .doc-row-label { color: #6b7280; }
+  .entity-doc .doc-row-val { text-align: right; color: #111827; font-weight: 500; }
+  .entity-doc .doc-row-line { display: block; }
+  .entity-doc .doc-empty { color: #9ca3af; font-style: italic; font-size: 8.5pt; padding: 2pt 0; }
+  .entity-doc .doc-notes { color: #374151; font-size: 8.5pt; padding-top: 2pt; white-space: pre-wrap; }
+
+  /* Footer — subtle Rovelo mark, fixed to the bottom of every page */
+  .entity-doc .doc-foot {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-top: 7pt;
+    border-top: 1px solid #e5e7eb;
+    background: #ffffff;
+  }
+  .entity-doc .doc-foot-mark {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #d1d5db;
+    letter-spacing: -0.02em;
+  }
+  .entity-doc .doc-foot-dot { color: #e5e7eb; }
+  .entity-doc .doc-foot-meta {
+    font-size: 7pt;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9ca3af;
   }
 
   /* Page margins */

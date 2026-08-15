@@ -5,7 +5,11 @@ import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendEmail, inviteEmailHtml } from '@/lib/email'
+import { provisionPortalLogin } from '@/lib/portal'
+import { getViewer } from '@/lib/auth'
+import { CHART_TEMPLATES, DEFAULT_TEMPLATE_KEY } from '@/lib/coa'
+import { logEvent } from '@/lib/registryServer'
+import type { createClient as createServerClient } from '@/lib/supabase/server'
 
 /** Base URL of the current deployment, derived from the request. */
 function siteUrl() {
@@ -41,26 +45,54 @@ function fail(message: string): never {
   redirect(`/admin/new?error=${encodeURIComponent(message)}`)
 }
 
+const VALID_TEMPLATES = new Set(Object.keys(CHART_TEMPLATES))
+
 export async function createClientAccount(formData: FormData) {
   await requireAdmin()
 
   const name = String(formData.get('name') || '').trim()
   const slug = slugify(String(formData.get('slug') || '') || name)
-  const owner = String(formData.get('owner') || '').trim() || null
   const address = String(formData.get('address') || '').trim() || null
-  const email = String(formData.get('email') || '').trim()
+
+  // Owners: paired owner_name / owner_pct inputs (blank rows dropped).
+  const ownerNames = formData.getAll('owner_name').map((v) => String(v).trim())
+  const ownerPcts = formData.getAll('owner_pct').map((v) => String(v).trim())
+  const owners = ownerNames
+    .map((n, i) => ({ name: n, pct: ownerPcts[i] ? Number(ownerPcts[i]) : null }))
+    .filter((o) => o.name)
+  const primaryOwner = owners[0]?.name ?? null
+  const email = String(formData.get('email') || '').trim() // optional — portal login can be added later
+  const entityType = String(formData.get('entity_type') || '').trim() || null
+  const basis = String(formData.get('accounting_method') || 'cash').trim() // default cash
+  const templateKey = String(formData.get('template') || DEFAULT_TEMPLATE_KEY).trim()
 
   if (!name) fail('Business name is required.')
   if (!slug) fail('A URL slug is required.')
-  if (!email) fail('A login email is required.')
+
+  // Which firm this client belongs to. A platform super-admin may pick any firm;
+  // a firm's own admin can only create clients within their firm.
+  const viewer = await getViewer()
+  let orgId = viewer?.orgId ?? null
+  if (viewer?.isPlatform) {
+    const chosen = String(formData.get('org_id') || '').trim()
+    if (chosen) orgId = chosen
+  }
 
   const base = siteUrl()
   const admin = createAdminClient()
 
-  // 1) Create the tenant.
+  // 1) Create the tenant with how-they-operate defaults.
   const { data: client, error: cErr } = await admin
     .from('clients')
-    .insert({ name, slug, owner_name: owner, address })
+    .insert({
+      name,
+      slug,
+      org_id: orgId,
+      owner_name: primaryOwner,
+      address,
+      entity_type: entityType,
+      accounting_method: basis === 'accrual' ? 'accrual' : 'cash',
+    })
     .select('id, slug, name')
     .single()
   if (cErr) {
@@ -68,38 +100,51 @@ export async function createClientAccount(formData: FormData) {
     fail(`Could not create client: ${cErr.message}`)
   }
 
-  // 2) Create the login as an invited user (no password yet) and get a
-  //    single-use link the client will use to set their own password.
-  const { data: link, error: lErr } = await admin.auth.admin.generateLink({
-    type: 'invite',
-    email,
-    options: { redirectTo: `${base}/auth/confirm` },
-  })
-  if (lErr || !link?.user) {
-    await admin.from('clients').delete().eq('id', client!.id) // roll back tenant
-    fail(`Could not create login: ${lErr?.message ?? 'unknown error'}`)
+  // Create an officer row per owner (with % where given).
+  if (owners.length > 0) {
+    await admin.from('entity_officers').insert(
+      owners.map((o) => ({ client_id: client!.id, name: o.name, title: 'Owner', ownership_pct: o.pct }))
+    )
   }
 
-  // 3) Link the auto-created profile to this client, as a read-only client role.
-  const { error: pErr } = await admin
-    .from('profiles')
-    .update({ role: 'client', client_id: client!.id })
-    .eq('id', link!.user.id)
-  if (pErr) fail(`Login created, but linking failed: ${pErr.message}`)
+  // 2) Seed the chart of accounts from the chosen template (default general).
+  const template = CHART_TEMPLATES[VALID_TEMPLATES.has(templateKey) ? templateKey : DEFAULT_TEMPLATE_KEY]
+  await admin.from('chart_of_accounts').insert(
+    template.accounts.map((a, i) => ({
+      client_id: client!.id,
+      code: a.code,
+      name: a.name,
+      type: a.type,
+      tax_line: a.tax_line ?? null,
+      sort: i,
+    }))
+  )
 
-  // 4) Email the client a secure set-password link (routed through our app).
-  const tokenHash = link!.properties?.hashed_token
-  const setupUrl = `${base}/auth/confirm?token_hash=${tokenHash}&type=invite&next=/set-password`
-  try {
-    await sendEmail({
-      to: email,
-      subject: 'Your Rovelo Inc client portal',
-      html: inviteEmailHtml(client!.name, setupUrl),
-    })
-  } catch (e) {
+  // Genesis: the first line of the entity's registry — where its record begins.
+  await logEvent(admin as unknown as ReturnType<typeof createServerClient>, client!.id, {
+    kind: 'genesis',
+    source: 'system',
+    actor: 'System',
+    title: `Welcome, ${name}. This is the start of your record on Rovelo Inc.`,
+    detail: `${entityType ?? 'Business type not set yet'} · ${basis === 'accrual' ? 'accrual' : 'cash'} basis.`,
+  })
+
+  // 3) Portal login is OPTIONAL. If no email was given, create the entity now
+  //    and invite them later from settings.
+  if (!email) {
     revalidatePath('/admin')
-    const msg = e instanceof Error ? e.message : 'unknown error'
-    redirect(`/admin/clients/${client!.slug}?warn=${encodeURIComponent(`Client created, but the invite email failed: ${msg}`)}`)
+    redirect(
+      `/admin/clients/${client!.slug}?ok=${encodeURIComponent(
+        'Client created. No portal email yet — you can invite them anytime from Entity settings → Portal access.'
+      )}`
+    )
+  }
+
+  // 4) Provision the portal login + invite email. Roll back the tenant on failure.
+  const res = await provisionPortalLogin(client!.id, client!.name, email, base)
+  if (!res.ok) {
+    await admin.from('clients').delete().eq('id', client!.id) // cascades chart_of_accounts
+    fail(res.error)
   }
 
   revalidatePath('/admin')

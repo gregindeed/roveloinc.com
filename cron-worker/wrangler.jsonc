@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "roveloinc-cron",
+  "main": "worker.js",
+  "account_id": "c60d73bd6bdd2bfa6aba42a117a4b69e",
+  "compatibility_date": "2024-12-30",
+  // 13:00 UTC = 6:00 AM Pacific (PDT). Adjust the hour for your timezone.
+  "triggers": { "crons": ["0 13 * * *"] },
+  "vars": {
+    "APP_URL": "https://roveloinc.com"
+  }
+  // CRON_SECRET is set as a secret, not here:  npx wrangler secret put CRON_SECRET
+}

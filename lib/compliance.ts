@@ -138,3 +138,74 @@ export const TEMPLATES: ComplianceTemplate[] = [
 export function getTemplate(key: string): ComplianceTemplate | undefined {
   return TEMPLATES.find((t) => t.key === key)
 }
+
+// ---------------------------------------------------------------------------
+// Compliance profile: how the entity operates -> which obligations it owes.
+// Toggles live on Account details; the schedule is generated from them.
+// ---------------------------------------------------------------------------
+
+export type ProfileToggle = {
+  field: string // boolean column on clients
+  label: string
+  hint: string
+  kinds: string[] // obligation template keys this toggle enrolls
+}
+
+export const COMPLIANCE_PROFILE: ProfileToggle[] = [
+  {
+    field: 'collects_sales_tax',
+    label: 'Collects sales tax (CDTFA)',
+    hint: 'Quarterly CDTFA sales & use tax returns',
+    kinds: ['cdtfa_return'],
+  },
+  {
+    field: 'has_employees',
+    label: 'Has employees / payroll',
+    hint: 'EDD DE-9/DE-9C, IRS Form 941, IRS Form 940 (FUTA)',
+    kinds: ['edd_de9', 'irs_941', 'irs_940'],
+  },
+  {
+    field: 'files_franchise_tax',
+    label: 'Corporation / LLC income tax (FTB)',
+    hint: 'Annual FTB franchise / income tax ($800 minimum)',
+    kinds: ['ftb_franchise_tax'],
+  },
+  {
+    field: 'files_soi',
+    label: 'Statement of Information (SOS)',
+    hint: 'Periodic CA Secretary of State Statement of Information',
+    kinds: ['sos_soi'],
+  },
+  {
+    field: 'has_city_license',
+    label: 'City business license',
+    hint: 'Annual local business license renewal',
+    kinds: ['business_license'],
+  },
+]
+
+export const PROFILE_FIELDS = COMPLIANCE_PROFILE.map((p) => p.field)
+export const ALL_PROFILE_KINDS = COMPLIANCE_PROFILE.flatMap((p) => p.kinds)
+
+export function desiredKinds(profile: Record<string, boolean>): string[] {
+  return COMPLIANCE_PROFILE.filter((p) => profile[p.field]).flatMap((p) => p.kinds)
+}
+
+// Our built-in schedule templates are California state agencies (FTB, CDTFA, EDD,
+// CA SOS) plus genuinely-federal IRS payroll. IRS filings apply in every state;
+// the California ones must NOT be auto-attached to an out-of-state entity.
+export const FEDERAL_KINDS = new Set(['irs_941', 'irs_940'])
+
+// Rovelo is a California firm, so an absent state defaults to California scope.
+export function isCaliforniaState(state?: string | null): boolean {
+  if (!state) return true
+  const s = state.trim().toLowerCase()
+  return s === 'ca' || s === 'california'
+}
+
+// The obligations the system can correctly auto-enroll for this entity: everything
+// its profile implies when it's in California, federal-only when it isn't.
+export function plannedKinds(profile: Record<string, boolean>, caScope: boolean): string[] {
+  const kinds = desiredKinds(profile)
+  return caScope ? kinds : kinds.filter((k) => FEDERAL_KINDS.has(k))
+}

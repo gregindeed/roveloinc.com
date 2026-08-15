@@ -17,13 +17,12 @@ export default function LoginPage({
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
       <div className="w-full max-w-sm">
-        <Link href="/" className="flex items-baseline gap-2 justify-center mb-8">
-          <span className="text-xl font-bold tracking-tight text-gray-900">Rovelo</span>
+        <Link href="/" className="flex items-baseline justify-center mb-8">
           <span
-            className="text-xl font-normal text-gray-400"
-            style={{ fontFamily: 'var(--font-vollkorn)', fontStyle: 'italic' }}
+            className="text-2xl text-gray-900"
+            style={{ fontFamily: 'var(--font-fraunces), serif', fontWeight: 700, letterSpacing: '-0.03em' }}
           >
-            Inc.
+            rovelo<span className="text-gray-400" style={{ fontWeight: 400 }}>.inc</span>
           </span>
         </Link>
 
@@ -67,13 +66,19 @@ export default function LoginPage({
           </div>
           <button
             type="submit"
-            className="w-full rounded-lg bg-gray-900 text-white text-sm font-medium py-2.5 hover:bg-gray-800 transition-colors"
+            className="w-full text-center text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors"
           >
             Sign in
           </button>
         </form>
 
-        <p className="text-xs text-gray-500 text-center mt-6">
+        <p className="text-xs text-center mt-4">
+          <Link href="/forgot-password" className="font-medium text-gray-600 hover:text-gray-900">
+            Forgot your password?
+          </Link>
+        </p>
+
+        <p className="text-xs text-gray-500 text-center mt-4">
           Trouble signing in? Contact Rovelo Inc.
         </p>
       </div>
