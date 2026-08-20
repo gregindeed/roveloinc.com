@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { postTransaction, reverseTransaction, type PostResult } from '@/lib/ledger/posting'
+import { postBankRows } from '@/lib/ledger/bankBridge'
 
 async function admin() {
   const supabase = createClient()
@@ -53,6 +54,32 @@ export async function createManualJournal(
     revalidatePath(`/admin/clients/${slug}`)
   }
   return res
+}
+
+// Post all categorized-but-unposted bank activity (deposits, checking, card) into
+// the ledger. Remembers the chosen bank + card-payable accounts on the entity.
+export async function postBankActivity(
+  slug: string,
+  bankAccountId: string,
+  cardAccountId: string | null,
+  since?: string | null
+): Promise<{ ok: boolean; posted: number; skipped: number; error?: string }> {
+  const { supabase, userId } = await admin()
+  const clientId = await clientIdFor(supabase, slug)
+  if (!clientId) return { ok: false, posted: 0, skipped: 0, error: 'Entity not found.' }
+  if (!bankAccountId) return { ok: false, posted: 0, skipped: 0, error: 'Choose your bank account first.' }
+
+  await supabase
+    .from('clients')
+    .update({ ledger_bank_account_id: bankAccountId, ledger_card_account_id: cardAccountId || null })
+    .eq('id', clientId)
+
+  const { posted, skipped } = await postBankRows(supabase, clientId, userId, bankAccountId, cardAccountId || null, since ?? null)
+
+  revalidatePath(`/admin/clients/${slug}/ledger`)
+  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(`/admin/clients/${slug}/transactions`)
+  return { ok: true, posted, skipped }
 }
 
 export async function reverseLedgerTxn(slug: string, txnId: string): Promise<PostResult> {

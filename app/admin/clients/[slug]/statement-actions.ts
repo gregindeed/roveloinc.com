@@ -38,8 +38,25 @@ type ParseResult =
   | { ok: true; statement: ParsedStatement; possibleDuplicates: number }
   | { ok: false; error: string }
 
-const dupeKey = (date: string, amount: number, desc: string) =>
-  `${date}|${amount}|${(desc || '').trim().toLowerCase()}`
+// Normalize a bank description so OCR jitter doesn't defeat de-duplication:
+// drop everything from a confirmation code onward, strip long digit runs
+// (reference numbers), remove punctuation, collapse whitespace. Mirrors the
+// SQL normalize() used in the one-off cleanup so import-time and cleanup-time
+// dedup agree.
+function normDesc(desc: string): string {
+  return (desc || '')
+    .toLowerCase()
+    .split('conf')[0]
+    .replace(/[0-9]{4,}/g, ' ')
+    .replace(/[^a-z0-9/ ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// De-dup key. Bank deposits/card omit check_num; checking includes it so two
+// genuinely different checks (same day/amount) never collapse.
+const normKey = (date: string, amount: number, desc: string, checkNum?: string | null) =>
+  `${date}|${Math.round((Number(amount) || 0) * 100)}|${checkNum ?? ''}|${normDesc(desc)}`
 
 // Parse an already-uploaded statement file into structured line items + balances.
 export async function parseStatementFile(
@@ -91,15 +108,17 @@ export async function parseStatementFile(
     const clientId = await clientIdFor(supabase, slug)
     if (clientId) {
       const [{ data: d }, { data: c }, { data: cc }] = await Promise.all([
-        supabase.from('deposits').select('txn_date, amount, description').eq('client_id', clientId),
-        supabase.from('checking_expenses').select('txn_date, amount, description').eq('client_id', clientId),
-        supabase.from('cc_transactions').select('post_date, amount, description').eq('client_id', clientId),
+        supabase.from('deposits').select('txn_date, amount, description').eq('client_id', clientId).limit(100000),
+        supabase.from('checking_expenses').select('txn_date, amount, description, check_num').eq('client_id', clientId).limit(100000),
+        supabase.from('cc_transactions').select('post_date, amount, description').eq('client_id', clientId).limit(100000),
       ])
       const keys = new Set<string>()
-      for (const r of d ?? []) keys.add(dupeKey(String(r.txn_date), Number(r.amount), String(r.description)))
-      for (const r of c ?? []) keys.add(dupeKey(String(r.txn_date), Number(r.amount), String(r.description)))
-      for (const r of cc ?? []) keys.add(dupeKey(String(r.post_date), Number(r.amount), String(r.description)))
-      possibleDuplicates = statement.transactions.filter((t) => keys.has(dupeKey(t.date, t.amount, t.description))).length
+      for (const r of d ?? []) keys.add(normKey(String(r.txn_date), Number(r.amount), String(r.description)))
+      for (const r of c ?? []) keys.add(normKey(String(r.txn_date), Number(r.amount), String(r.description), (r as { check_num?: string | null }).check_num ?? null))
+      for (const r of cc ?? []) keys.add(normKey(String(r.post_date), Number(r.amount), String(r.description)))
+      possibleDuplicates = statement.transactions.filter((t) =>
+        keys.has(normKey(t.date, t.amount, t.description, t.direction === 'out' ? t.check_num ?? null : null))
+      ).length
     }
 
     return { ok: true, statement, possibleDuplicates }
@@ -139,9 +158,71 @@ export async function commitStatement(
     reconciled = Math.abs(difference) < 0.01
   }
 
+  // Statement-level idempotency: if this exact statement (same type + period +
+  // balances) was already imported, refuse to import it again. Row-level dedup
+  // can't catch OCR letter-jitter across re-parses of the same PDF, so we stop
+  // the whole statement at the door — this is what prevents a 4x-imported
+  // statement from ever stacking duplicates.
+  {
+    let q = supabase
+      .from('statement_imports')
+      .select('id', { head: true, count: 'exact' })
+      .eq('client_id', clientId)
+      .eq('statement_type', statementType)
+    q = statement.period_start ? q.eq('period_start', statement.period_start) : q.is('period_start', null)
+    q = statement.period_end ? q.eq('period_end', statement.period_end) : q.is('period_end', null)
+    q = ob != null ? q.eq('opening_balance', ob) : q.is('opening_balance', null)
+    q = cb != null ? q.eq('closing_balance', cb) : q.is('closing_balance', null)
+    const { count: already } = await q
+    if ((already ?? 0) > 0) {
+      return { ok: true, inserted: 0, reconciled, difference, hasBalances }
+    }
+  }
+
   const inRows = txns.filter((t) => t.direction === 'in')
   const outRows = txns.filter((t) => t.direction === 'out')
-  const plannedCount = statementType === 'bank' ? inRows.length + outRows.length : outRows.length
+
+  // Idempotent ingestion — the real cure for duplicate rows. Skip any parsed
+  // row that already exists on the books (same normalized key), and skip
+  // duplicates within this same batch. A re-import, an overlapping month, or a
+  // re-upload under a new storage path becomes a no-op for rows already present
+  // instead of stacking duplicates. (normKey folds away OCR jitter.)
+  const [{ data: exD }, { data: exC }, { data: exCC }] = await Promise.all([
+    supabase.from('deposits').select('txn_date, amount, description').eq('client_id', clientId).limit(100000),
+    supabase.from('checking_expenses').select('txn_date, amount, description, check_num').eq('client_id', clientId).limit(100000),
+    supabase.from('cc_transactions').select('post_date, amount, description').eq('client_id', clientId).limit(100000),
+  ])
+  const seenDep = new Set<string>()
+  const seenChk = new Set<string>()
+  const seenCc = new Set<string>()
+  for (const r of exD ?? []) seenDep.add(normKey(String(r.txn_date), Number(r.amount), String(r.description)))
+  for (const r of exC ?? [])
+    seenChk.add(normKey(String(r.txn_date), Number(r.amount), String(r.description), (r as { check_num?: string | null }).check_num ?? null))
+  for (const r of exCC ?? []) seenCc.add(normKey(String(r.post_date), Number(r.amount), String(r.description)))
+
+  const freshDeposits: { date: string; description: string; amount: number }[] = []
+  for (const t of inRows) {
+    const k = normKey(t.date, t.amount, t.description)
+    if (seenDep.has(k)) continue
+    seenDep.add(k)
+    freshDeposits.push({ date: t.date, description: t.description, amount: t.amount })
+  }
+  const freshChecking: { date: string; description: string; amount: number; check_num: string | null }[] = []
+  for (const t of outRows) {
+    const k = normKey(t.date, t.amount, t.description, t.check_num ?? null)
+    if (seenChk.has(k)) continue
+    seenChk.add(k)
+    freshChecking.push({ date: t.date, description: t.description, amount: t.amount, check_num: t.check_num ?? null })
+  }
+  const freshCharges: { date: string; description: string; amount: number }[] = []
+  for (const t of outRows) {
+    const k = normKey(t.date, t.amount, t.description)
+    if (seenCc.has(k)) continue
+    seenCc.add(k)
+    freshCharges.push({ date: t.date, description: t.description, amount: t.amount })
+  }
+
+  const plannedCount = statementType === 'bank' ? freshDeposits.length + freshChecking.length : freshCharges.length
 
   // Record the batch FIRST so every imported row can be tagged with its id —
   // that's what makes a re-import identifiable and an undo possible.
@@ -174,50 +255,50 @@ export async function commitStatement(
 
   let inserted = 0
   if (statementType === 'bank') {
-    const deposits = inRows.map((t) => ({
-      client_id: clientId,
-      txn_date: t.date,
-      description: t.description,
-      amount: t.amount,
-      import_id: importId,
-    }))
-    const checking = outRows.map((t) => ({
-      client_id: clientId,
-      txn_date: t.date,
-      check_num: t.check_num ?? null,
-      description: t.description,
-      amount: t.amount,
-      import_id: importId,
-    }))
-    if (deposits.length) {
-      const { error } = await supabase.from('deposits').insert(deposits)
+    if (freshDeposits.length) {
+      const rows = freshDeposits.map((t) => ({
+        client_id: clientId,
+        txn_date: t.date,
+        description: t.description,
+        amount: t.amount,
+        import_id: importId,
+      }))
+      const { error } = await supabase.from('deposits').insert(rows)
       if (error) return fail(error.message)
-      inserted += deposits.length
+      inserted += rows.length
     }
-    if (checking.length) {
-      const { error } = await supabase.from('checking_expenses').insert(checking)
+    if (freshChecking.length) {
+      const rows = freshChecking.map((t) => ({
+        client_id: clientId,
+        txn_date: t.date,
+        check_num: t.check_num,
+        description: t.description,
+        amount: t.amount,
+        import_id: importId,
+      }))
+      const { error } = await supabase.from('checking_expenses').insert(rows)
       if (error) return fail(error.message)
-      inserted += checking.length
+      inserted += rows.length
     }
   } else {
     // Card: insert charges (out) only. Payments (in) are recorded on the bank
     // side (checking → Credit Card Payable), so inserting them here would
     // double-count — they're used for reconciliation math only.
     const label = payload.filename.replace(/\.[^.]+$/, '').slice(0, 60)
-    const charges = outRows.map((t) => ({
-      client_id: clientId,
-      post_date: t.date,
-      txn_date: t.date,
-      account: label,
-      description: t.description,
-      amount: t.amount,
-      personal: false,
-      import_id: importId,
-    }))
-    if (charges.length) {
-      const { error } = await supabase.from('cc_transactions').insert(charges)
+    if (freshCharges.length) {
+      const rows = freshCharges.map((t) => ({
+        client_id: clientId,
+        post_date: t.date,
+        txn_date: t.date,
+        account: label,
+        description: t.description,
+        amount: t.amount,
+        personal: false,
+        import_id: importId,
+      }))
+      const { error } = await supabase.from('cc_transactions').insert(rows)
       if (error) return fail(error.message)
-      inserted += charges.length
+      inserted += rows.length
     }
   }
 
