@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { assess, overseerModel } from '@/lib/ai'
 import { logEvent, registryDigest } from '@/lib/registryServer'
 import type { Client } from '@/lib/types'
+import { entityBase } from '@/lib/entityYear'
 
 async function admin() {
   const supabase = createClient()
@@ -219,7 +220,7 @@ export async function generateAssessment(slug: string, scope: string) {
       { onConflict: 'client_id,scope' }
     )
   const sub = scope === 'compliance' || scope === 'documents' ? `/${scope}` : ''
-  revalidatePath(`/admin/clients/${slug}${sub}`)
+  revalidatePath(`${entityBase(slug)}${sub}`)
 }
 
 // Save the human-written briefing the Overseer uses on every read for this entity.
@@ -241,7 +242,7 @@ export async function updateOverseerContext(slug: string, context: string) {
       createdBy: user?.id ?? null,
     })
   }
-  revalidatePath(`/admin/clients/${slug}`)
-  revalidatePath(`/admin/clients/${slug}/compliance`)
-  revalidatePath(`/admin/clients/${slug}/documents`)
+  revalidatePath(entityBase(slug))
+  revalidatePath(`${entityBase(slug)}/compliance`)
+  revalidatePath(`${entityBase(slug)}/documents`)
 }

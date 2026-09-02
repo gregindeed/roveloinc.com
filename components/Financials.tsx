@@ -25,6 +25,7 @@ export function FinancialSummary({
   accounts,
   periodLabel,
   slug,
+  year,
 }: {
   deposits: Deposit[]
   checking: CheckingExpense[]
@@ -32,9 +33,10 @@ export function FinancialSummary({
   accounts: Account[]
   periodLabel: string
   slug: string
+  year: number
 }) {
   const pnl = computePnl(deposits, checking, cc, accounts)
-  return <PnlStatement pnl={pnl} periodLabel={periodLabel} categorizeHref={`/admin/clients/${slug}/expenses`} />
+  return <PnlStatement pnl={pnl} periodLabel={periodLabel} categorizeHref={`/admin/clients/${slug}/${year}/expenses`} />
 }
 
 /* ---------------- Transactions (deposits) ---------------- */

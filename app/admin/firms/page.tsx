@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import AuthHeader from '@/components/AuthHeader'
 import { requirePlatform } from '@/lib/auth'
 import { inviteFirmManager } from './actions'
+import { getLocale } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
 import type { Organization } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -11,6 +13,7 @@ export const metadata = { title: 'Firms — Rovelo Inc', robots: { index: false,
 
 export default async function FirmsPage({ searchParams }: { searchParams: { ok?: string; error?: string } }) {
   await requirePlatform()
+  const locale = getLocale()
   const supabase = createClient()
   const {
     data: { user },
@@ -42,16 +45,13 @@ export default async function FirmsPage({ searchParams }: { searchParams: { ok?:
       <AuthHeader label="Admin" email={user?.email} settingsHref="/admin/team" />
       <main className="max-w-3xl mx-auto px-6 py-10">
         <Link href="/admin" className="text-xs text-gray-500 hover:text-gray-900">
-          ← All accounts
+          ← {t(locale, 'team.allAccounts')}
         </Link>
 
         <div className="flex items-start justify-between gap-3 mt-4">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Firms</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Partner bookkeeping firms you manage accounts alongside. Each firm&apos;s managers see only their own
-              accounts; your Rovelo team sees every firm.
-            </p>
+            <h1 className="text-xl font-bold text-gray-900">{t(locale, 'team.firms')}</h1>
+            <p className="text-sm text-gray-600 mt-1">{t(locale, 'team.firmsIntro')}</p>
           </div>
           <Link
             href="/admin/firms/new"
@@ -60,12 +60,14 @@ export default async function FirmsPage({ searchParams }: { searchParams: { ok?:
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M12 5v14M5 12h14" />
             </svg>
-            New firm
+            {t(locale, 'team.newFirm')}
           </Link>
         </div>
 
         <p className="text-xs text-gray-400 mt-3 mb-6">
-          {partnerCount} partner firm{partnerCount === 1 ? '' : 's'} · plus your own
+          {partnerCount === 1
+            ? t(locale, 'team.partnerFirmsOne', { n: partnerCount })
+            : t(locale, 'team.partnerFirmsOther', { n: partnerCount })}
         </p>
 
         {searchParams.ok && (
@@ -91,12 +93,15 @@ export default async function FirmsPage({ searchParams }: { searchParams: { ok?:
                       {f.name}
                       {f.is_platform && (
                         <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-violet-600">
-                          Your firm
+                          {t(locale, 'team.yourFirm')}
                         </span>
                       )}
                     </h2>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {n} account{n === 1 ? '' : 's'} · {managers.length} manager{managers.length === 1 ? '' : 's'}
+                      {n === 1 ? t(locale, 'team.accountsOne', { n }) : t(locale, 'team.accountsOther', { n })} ·{' '}
+                      {managers.length === 1
+                        ? t(locale, 'team.managersOne', { n: managers.length })
+                        : t(locale, 'team.managersOther', { n: managers.length })}
                     </p>
                     {f.notes && <p className="text-xs text-gray-500 mt-2 leading-relaxed">{f.notes}</p>}
                   </div>
@@ -107,7 +112,7 @@ export default async function FirmsPage({ searchParams }: { searchParams: { ok?:
                     <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <path d="M12 5v14M5 12h14" />
                     </svg>
-                    Account
+                    {t(locale, 'team.account')}
                   </Link>
                 </div>
 
@@ -123,7 +128,7 @@ export default async function FirmsPage({ searchParams }: { searchParams: { ok?:
 
                 <details className="mt-3 group border-t border-gray-100 pt-3">
                   <summary className="cursor-pointer text-[11px] font-medium text-gray-500 hover:text-gray-800 select-none list-none">
-                    + Add a manager
+                    + {t(locale, 'team.addManager')}
                   </summary>
                   <form action={inviteFirmManager.bind(null, f.id)} className="mt-2.5 flex flex-wrap items-end gap-2">
                     <input
@@ -134,7 +139,7 @@ export default async function FirmsPage({ searchParams }: { searchParams: { ok?:
                       className="flex-1 min-w-[200px] border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                     />
                     <button className="text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors">
-                      Send invite
+                      {t(locale, 'team.sendInvite')}
                     </button>
                   </form>
                 </details>

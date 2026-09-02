@@ -1,65 +1,81 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import PeriodBar from '@/components/PeriodBar'
-import { FinancialSummary } from '@/components/Financials'
-import { parsePeriod, inPeriod } from '@/lib/period'
-import { getChartOfAccounts } from '@/lib/coaServer'
-import type { Client, Deposit, CheckingExpense, CCTransaction } from '@/lib/types'
+import { getViewer } from '@/lib/auth'
+import { getClientYears } from '@/lib/yearsServer'
+import { getLocale } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
+import OpenYearControl from '@/components/OpenYearControl'
+import EntityQuickBar from '@/components/EntityQuickBar'
+import type { Client } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { robots: { index: false, follow: false } }
 
-export default async function Overview({
-  params,
-  searchParams,
-}: {
-  params: { slug: string }
-  searchParams: { ok?: string; warn?: string; year?: string; q?: string; month?: string; day?: string }
-}) {
+// The buffer: pick (or open) the tax year before entering the entity's workspace.
+export default async function EntityYearPicker({ params }: { params: { slug: string } }) {
   const supabase = createClient()
-  const { data: client } = await supabase.from('clients').select('*').eq('slug', params.slug).single()
-  if (!client) notFound()
-  const c = client as Client
-
-  const now = new Date().getFullYear()
-  const years = [now, now - 1, now - 2, now - 3]
-  const period = parsePeriod(searchParams, now)
-
-  const [{ data: deposits }, { data: checking }, { data: cc }, accounts] = await Promise.all([
-    supabase.from('deposits').select('*').eq('client_id', c.id).order('txn_date'),
-    supabase.from('checking_expenses').select('*').eq('client_id', c.id).order('txn_date'),
-    supabase.from('cc_transactions').select('*').eq('client_id', c.id).order('post_date'),
-    // Chart of accounts — cached (tag-invalidated on edits), shared across tabs.
-    getChartOfAccounts(c.id),
-  ])
-
-  const dep = ((deposits ?? []) as Deposit[]).filter((r) => inPeriod(r.txn_date, period))
-  const chk = ((checking ?? []) as CheckingExpense[]).filter((r) => inPeriod(r.txn_date, period))
-  const card = ((cc ?? []) as CCTransaction[]).filter((r) => inPeriod(r.post_date, period))
+  const { data: clientRow } = await supabase.from('clients').select('*').eq('slug', params.slug).single()
+  if (!clientRow) notFound()
+  const c = clientRow as Client
+  const locale = getLocale()
+  const viewer = await getViewer()
+  const canManage = viewer?.role === 'admin'
+  const years = await getClientYears(supabase, c.id)
 
   return (
-    <div className="space-y-8">
-      {searchParams.ok && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-green-800">
-          {searchParams.ok}
-        </div>
+    <div className="max-w-2xl mx-auto px-6 py-16">
+      <Link href="/admin" className="text-xs text-gray-500 hover:text-gray-900">
+        ← {t(locale, 'team.allAccounts')}
+      </Link>
+
+      {/* Entity identity */}
+      <h1 className="text-2xl font-bold text-gray-900 mt-4" style={{ fontFamily: 'var(--font-fraunces), serif' }}>
+        {c.name}
+      </h1>
+      {(c.owner_name || c.address) && (
+        <p className="text-sm text-gray-600 mt-1">
+          {c.owner_name ?? ''}
+          {c.owner_name && c.address ? ' · ' : ''}
+          {c.address ?? ''}
+        </p>
       )}
-      {searchParams.warn && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
-          {searchParams.warn}
+      <EntityQuickBar c={c} />
+
+      {/* Year chooser */}
+      <div className="mt-10 border-t border-gray-100 pt-8">
+        <div className="flex items-center justify-between gap-4 mb-5">
+          <p className="text-sm text-gray-500">{t(locale, 'year.pickPrompt')}</p>
+          {canManage && (
+            <OpenYearControl slug={c.slug} nextYear={(years[0]?.year ?? new Date().getFullYear()) + 1} />
+          )}
         </div>
-      )}
-      <PeriodBar years={years} />
-      <div>
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Summary · {period.label}</h2>
-        <FinancialSummary
-          deposits={dep}
-          checking={chk}
-          cc={card}
-          accounts={accounts}
-          periodLabel={period.label}
-          slug={c.slug}
-        />
+
+        {years.length === 0 ? (
+          <p className="text-sm text-gray-400">{t(locale, 'year.noneYet')}</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {years.map((y) => {
+              const closed = y.status === 'closed'
+              return (
+                <Link
+                  key={y.year}
+                  href={`/admin/clients/${c.slug}/${y.year}`}
+                  className={`rounded-xl border p-4 transition-colors ${
+                    closed
+                      ? 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                      : 'border-gray-200 hover:border-gray-900 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="text-xl font-semibold text-gray-900 tabular-nums">{y.year}</div>
+                  <div className={`text-[11px] uppercase tracking-wide mt-1 ${closed ? 'text-gray-400' : 'text-green-600'}`}>
+                    {closed ? t(locale, 'year.closed') : t(locale, 'year.active')}
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

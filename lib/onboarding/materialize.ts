@@ -22,6 +22,7 @@ export type AccountInput = {
   businessActivity?: string | null
   accountingSystem?: string | null
   formationDate?: string | null
+  taxYear?: number | null
   // The Overseer's opening read (from the review step). Used as the entity's
   // overseer_context so its record opens in the same voice the operator saw.
   overseerRead?: string | null
@@ -89,6 +90,7 @@ export async function createAccount(admin: Admin, inp: AccountInput): Promise<{ 
         owner_name: inp.owners.find((o) => o.name)?.name ?? null,
         entity_type: inp.entityType,
         accounting_method: inp.accountingMethod,
+        state: inp.state ?? null,
         files_franchise_tax: profile.files_franchise_tax,
         files_soi: profile.files_soi,
         has_employees: profile.has_employees,
@@ -104,6 +106,10 @@ export async function createAccount(admin: Admin, inp: AccountInput): Promise<{ 
     if (error && error.code !== '23505') return { error: error.message }
     if (attempt === 4) return { error: 'Could not find a free URL for this account.' }
   }
+
+  // 1b) Open the first tax year — the engagement is period-scoped.
+  const firstYear = inp.taxYear && inp.taxYear >= 2000 && inp.taxYear <= 2100 ? inp.taxYear : new Date().getFullYear()
+  await admin.from('client_years').insert({ client_id: clientId, year: firstYear, status: 'active' })
 
   // 2) Owners → officers.
   const owners = inp.owners.filter((o) => o.name)

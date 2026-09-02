@@ -246,6 +246,125 @@ export async function reviseOnboarding(context: unknown, message: string, locale
 }
 
 // ---------------------------------------------------------------------------
+// Compliance drafting — for a state we don't have built-in templates for, the
+// Overseer proposes the filing calendar. Output is UNVERIFIED until a human
+// confirms it; it never drives a reminder on its own.
+// ---------------------------------------------------------------------------
+
+export type DraftedObligation = {
+  agency_label: string
+  kind: string
+  label: string
+  frequency: 'monthly' | 'quarterly' | 'annual' | 'biennial' | 'one_time'
+  events: { period_label: string; due_date: string }[]
+}
+export type ComplianceDraft = { obligations: DraftedObligation[]; note: string }
+
+const DRAFT_SYSTEM = `You are "the Overseer", the compliance mind for Rovelo Inc. Our built-in schedule templates cover California and federal filings only. You are given a business in ANOTHER US state and asked to DRAFT its state + local filing calendar for a human to review.
+
+Using your own knowledge of that state's requirements, propose the obligations this specific entity most likely owes at the STATE and LOCAL level for the given calendar year — e.g. the state's franchise/privilege tax, annual report / periodic report, sales/transaction tax registration, state payroll/withholding and unemployment if it has employees, and any obvious local/city license. Do NOT include federal IRS filings (those are handled separately) and do NOT include California agencies.
+
+For each obligation give the real agency name, a short stable "kind" slug (lowercase, e.g. "az_tpt", "tx_franchise", "az_annual_report"), a human label, a frequency, and the concrete due dates (YYYY-MM-DD) for the given year using that state's standard statutory deadlines. If a specific deadline is uncertain, use the state's standard due date rather than omitting it, and keep the label general. Keep it to the handful that clearly apply (max 6). Also return a one-sentence "note" summarizing what the operator should verify.
+
+These are DRAFTS for human confirmation — be accurate and conservative, never invent account numbers or amounts.`
+
+const DRAFT_TOOL = {
+  name: 'record_compliance_draft',
+  description: "Record the Overseer's proposed state filing calendar for review.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      note: { type: 'string' },
+      obligations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            agency_label: { type: 'string' },
+            kind: { type: 'string' },
+            label: { type: 'string' },
+            frequency: { type: 'string', enum: ['monthly', 'quarterly', 'annual', 'biennial', 'one_time'] },
+            events: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { period_label: { type: 'string' }, due_date: { type: 'string' } },
+                required: ['period_label', 'due_date'],
+              },
+            },
+          },
+          required: ['agency_label', 'kind', 'label', 'frequency', 'events'],
+        },
+      },
+    },
+    required: ['obligations', 'note'],
+  },
+}
+
+const FREQS = new Set(['monthly', 'quarterly', 'annual', 'biennial', 'one_time'])
+
+export async function draftStateCompliance(context: unknown, locale?: string): Promise<ComplianceDraft> {
+  const key = process.env.ANTHROPIC_API_KEY
+  if (!key) throw new Error('ANTHROPIC_API_KEY is not set')
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: overseerModel(),
+      max_tokens: 1500,
+      system: DRAFT_SYSTEM + localeInstruction(locale),
+      tools: [DRAFT_TOOL],
+      tool_choice: { type: 'tool', name: 'record_compliance_draft' },
+      messages: [
+        {
+          role: 'user',
+          content: `Draft the state + local filing calendar (JSON context):\n${JSON.stringify(context, null, 2)}\n\nRecord the proposed obligations.`,
+        },
+      ],
+    }),
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    throw new Error(`Anthropic API ${res.status}: ${t.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  const blocks = (data?.content ?? []) as { type?: string; input?: unknown }[]
+  const tool = blocks.find((b) => b.type === 'tool_use')
+  const input = (tool?.input ?? {}) as { obligations?: unknown; note?: unknown }
+
+  const dateOk = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
+  const obligations: DraftedObligation[] = Array.isArray(input.obligations)
+    ? input.obligations
+        .map((o): DraftedObligation | null => {
+          if (!o || typeof o !== 'object') return null
+          const r = o as Record<string, unknown>
+          const freq = typeof r.frequency === 'string' && FREQS.has(r.frequency) ? r.frequency : 'annual'
+          const events = Array.isArray(r.events)
+            ? r.events
+                .filter((e) => e && typeof e === 'object' && dateOk((e as Record<string, unknown>).due_date))
+                .map((e) => {
+                  const er = e as Record<string, unknown>
+                  return { period_label: String(er.period_label ?? '').slice(0, 120), due_date: er.due_date as string }
+                })
+            : []
+          if (typeof r.label !== 'string' || !r.label.trim() || events.length === 0) return null
+          return {
+            agency_label: typeof r.agency_label === 'string' ? r.agency_label.slice(0, 120) : 'State agency',
+            kind: (typeof r.kind === 'string' ? r.kind : 'state_filing').toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 40),
+            label: r.label.slice(0, 160),
+            frequency: freq as DraftedObligation['frequency'],
+            events,
+          }
+        })
+        .filter((o): o is DraftedObligation => !!o)
+        .slice(0, 6)
+    : []
+
+  return { obligations, note: typeof input.note === 'string' ? input.note.trim() : '' }
+}
+
+// ---------------------------------------------------------------------------
 // Document intake parser — reads a PDF/image and extracts structured data.
 // ---------------------------------------------------------------------------
 
@@ -264,9 +383,6 @@ export type ParsedDoc = {
   folder_category: string | null
   period_year: number | null
   period_month: number | null
-  // For bank/card statements: the LAST 4 digits of the account number (an entity
-  // may hold several accounts). Never the full number.
-  account_ref: string | null
 }
 
 const EXTRACT_SYSTEM = `You are a document-intake parser for a California business-services firm. You receive ONE scanned or digital document belonging to a single business entity, and you extract structured data from it.
@@ -288,8 +404,7 @@ Return ONLY a single JSON object (no prose, no markdown fences) with exactly the
   "field_confidence": { for EACH key you put in entity_fields, a number 0.0-1.0 for how sure you are you read it correctly },
   "folder_category": one of ["bank_statements","credit_card","income","expenses","payroll","other","permanent","agency_notices"],
   "period_year": integer year the document COVERS, or null,
-  "period_month": integer 1-12 month the document COVERS, or null,
-  "account_ref": for a bank or credit-card statement, the LAST 4 DIGITS of the account/card number as a string (e.g. "4821"); null for any other document. NEVER return the full number — only the last 4 digits.
+  "period_month": integer 1-12 month the document COVERS, or null
 }
 
 Filing rules (folder_category — where this document should be filed):
@@ -351,7 +466,6 @@ const EXTRACT_TOOL = {
       folder_category: { type: ['string', 'null'] },
       period_year: { type: ['integer', 'null'] },
       period_month: { type: ['integer', 'null'] },
-      account_ref: { type: ['string', 'null'], description: 'Last 4 digits of a bank/card account number, else null.' },
     },
     required: ['entity_fields'],
   },
@@ -447,21 +561,7 @@ export async function categorizeTransactions(
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set')
   if (txns.length === 0) return {}
 
-  // ── Direction guard ────────────────────────────────────────────────────────
-  // Constrain candidate accounts by transaction DIRECTION so the P&L can't be
-  // corrupted: money-IN must never be booked to an expense/COGS account (that
-  // would zero out revenue AND inflate expenses), and money-OUT must never be
-  // booked to an income account (that would inflate revenue). The model only
-  // ever SEES the accounts valid for this direction, and a post-filter drops any
-  // out-of-direction code the model might still return (left uncategorized
-  // instead of wrong).
-  const INCOME_OK = new Set(['income', 'asset', 'liability', 'equity']) // money-in: never expense/cogs
-  const EXPENSE_OK = new Set(['expense', 'cogs', 'asset', 'liability', 'equity']) // money-out: never income
-  const okTypes = kind === 'income' ? INCOME_OK : EXPENSE_OK
-  const candidates = accounts.filter((a) => okTypes.has(a.type))
-  if (candidates.length === 0) return {} // no valid account for this direction — leave uncategorized
-
-  const chart = candidates.map((a) => `${a.code} | ${a.type} | ${a.name}`).join('\n')
+  const chart = accounts.map((a) => `${a.code} | ${a.type} | ${a.name}`).join('\n')
   const list = txns
     .map((t) =>
       JSON.stringify({
@@ -482,7 +582,7 @@ ${chart}
 
 Rules:
 - Return the single best-fit account CODE for every transaction id.
-- ${kind === 'income' ? 'These are money-IN transactions. The chart above lists ONLY the accounts valid for money-in. Use an INCOME account for real revenue; use a bank/liability/equity account only for transfers in or owner contributions. There is no expense account to choose here — money-in is never an expense.' : 'These are money-OUT transactions. The chart above lists ONLY the accounts valid for money-out. Use an EXPENSE or COGS account for real costs; use a liability/bank/equity account only for card/loan payments, transfers, or owner draws. There is no income account to choose here — money-out is never income.'}
+- ${kind === 'income' ? 'These are money-IN transactions — prefer income accounts.' : 'These are money-OUT transactions — prefer expense or COGS accounts.'}
 - A transaction flagged "personal": true is a personal charge on a business account — map it to the Owner's Draw / Distributions equity account (it is NOT a business expense).
 - Card/loan PAYMENTS or transfers between the business's own accounts are not expenses — map them to the Credit Card Payable or bank/liability account if one fits.
 - If nothing fits well, choose the closest "Other" account of the correct class rather than guessing a specific one.
@@ -514,9 +614,7 @@ Return ONLY a JSON object mapping each transaction id (as a string key) to an ac
     .map((b: { text?: string }) => b.text ?? '')
     .join('\n')
 
-  // Post-filter against the DIRECTION-VALID codes only — a code outside this
-  // direction's candidate set is rejected (row stays uncategorized, never wrong).
-  const valid = new Set(candidates.map((a) => a.code))
+  const valid = new Set(accounts.map((a) => a.code))
   const out: Record<string, string> = {}
   try {
     const raw = extractJson(text) as Record<string, unknown>
@@ -701,11 +799,6 @@ function normalizeParsed(raw: Record<string, unknown>): ParsedDoc {
     return Number.isInteger(n) && n >= 1 && n <= 12 ? n : null
   }
 
-  // Keep only the last 4 digits of any account reference the model returns —
-  // never persist a full account number.
-  const acctDigits = typeof raw.account_ref === 'string' ? raw.account_ref.replace(/\D/g, '') : ''
-  const account_ref = acctDigits.length >= 2 ? acctDigits.slice(-4) : null
-
   return {
     document_type: dt,
     agency: ag,
@@ -719,6 +812,5 @@ function normalizeParsed(raw: Record<string, unknown>): ParsedDoc {
     folder_category: fc,
     period_year: asYear(raw.period_year),
     period_month: asMonth(raw.period_month),
-    account_ref,
   }
 }

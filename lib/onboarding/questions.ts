@@ -134,6 +134,17 @@ export const QUESTIONS: Question[] = [
       { value: 'none', label: 'Nothing yet' },
     ],
   },
+  {
+    key: 'tax_year',
+    stage: 'accounting',
+    prompt: 'Which tax year are we opening for {name}?',
+    help: 'You can open more years later — each year is worked and closed on its own.',
+    input: 'chips_or_text',
+    options: (() => {
+      const now = new Date().getFullYear()
+      return [now, now - 1, now - 2].map((y) => ({ value: String(y), label: String(y) }))
+    })(),
+  },
 ]
 
 // Answered once a value has been recorded — including a deliberate skip (null)
@@ -186,6 +197,8 @@ export function factSummary(key: string, value: unknown): string | null {
       return value === 'accrual' ? 'Accrual basis' : 'Cash basis'
     case 'accounting_system':
       return typeof value === 'string' ? value : null
+    case 'tax_year':
+      return typeof value === 'string' && value ? value : null
     default:
       return value == null ? null : String(value)
   }
@@ -201,4 +214,5 @@ export const STAGE_LABELS: Record<string, string> = {
   has_employees: 'Operations',
   accounting_basis: 'Accounting',
   accounting_system: 'Accounting',
+  tax_year: 'Accounting',
 }

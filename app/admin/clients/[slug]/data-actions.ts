@@ -3,6 +3,8 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { isYearClosed } from '@/lib/yearsServer'
+import { entityBase } from '@/lib/entityYear'
 
 async function admin() {
   const supabase = createClient()
@@ -35,7 +37,7 @@ const isDate = (s: string | null): s is string =>
 
 type Tab = 'transactions' | 'expenses'
 const fail = (slug: string, tab: Tab, msg: string): never =>
-  redirect(`/admin/clients/${slug}/${tab}?warn=${encodeURIComponent(msg)}`)
+  redirect(`${entityBase(slug)}/${tab}?warn=${encodeURIComponent(msg)}`)
 
 // Shared validation for a transaction row. Returns a clean {date, description,
 // amount} or redirects with a warning. `dateKey` differs across tables.
@@ -49,8 +51,16 @@ function requireRow(fd: FormData, slug: string, tab: Tab, dateKey = 'txn_date') 
   return { date: date as string, description: description as string, amount: amount as number }
 }
 
-const revT = (slug: string) => revalidatePath(`/admin/clients/${slug}/transactions`)
-const revE = (slug: string) => revalidatePath(`/admin/clients/${slug}/expenses`)
+const revT = (slug: string) => revalidatePath(`${entityBase(slug)}/transactions`)
+const revE = (slug: string) => revalidatePath(`${entityBase(slug)}/expenses`)
+
+// A closed tax year is read-only — block writes dated inside it.
+async function assertYearOpen(s: Awaited<ReturnType<typeof admin>>, cid: string, date: string, slug: string, tab: Tab) {
+  const year = Number(date.slice(0, 4))
+  if (year && (await isYearClosed(s, cid, year))) {
+    fail(slug, tab, `Tax year ${year} is closed. Reopen it to make changes.`)
+  }
+}
 
 /* ---------------- Deposits ---------------- */
 export async function addDeposit(slug: string, fd: FormData) {
@@ -58,6 +68,7 @@ export async function addDeposit(slug: string, fd: FormData) {
   const cid = await clientId(s, slug)
   if (!cid) fail(slug, 'transactions', 'Entity not found.')
   const row = requireRow(fd, slug, 'transactions')
+  await assertYearOpen(s, cid!, row.date, slug, 'transactions')
   const { error } = await s.from('deposits').insert({
     client_id: cid,
     txn_date: row.date,
@@ -97,6 +108,7 @@ export async function addChecking(slug: string, fd: FormData) {
   const cid = await clientId(s, slug)
   if (!cid) fail(slug, 'expenses', 'Entity not found.')
   const row = requireRow(fd, slug, 'expenses')
+  await assertYearOpen(s, cid!, row.date, slug, 'expenses')
   const { error } = await s.from('checking_expenses').insert({
     client_id: cid,
     txn_date: row.date,
@@ -137,6 +149,7 @@ export async function addCC(slug: string, fd: FormData) {
   const cid = await clientId(s, slug)
   if (!cid) fail(slug, 'expenses', 'Entity not found.')
   const row = requireRow(fd, slug, 'expenses', 'date')
+  await assertYearOpen(s, cid!, row.date, slug, 'expenses')
   const { error } = await s.from('cc_transactions').insert({
     client_id: cid,
     post_date: row.date,

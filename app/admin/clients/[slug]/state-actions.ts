@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { recomputeBySlug } from '@/lib/entityStateServer'
+import { entityBase } from '@/lib/entityYear'
 
 async function worker() {
   const supabase = createClient()
@@ -21,5 +22,5 @@ async function worker() {
 export async function recomputeEntityState(slug: string) {
   const supabase = await worker()
   await recomputeBySlug(supabase, slug)
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(entityBase(slug))
 }

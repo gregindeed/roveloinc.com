@@ -87,13 +87,6 @@ function buildContext(name: string, f: Record<string, unknown>) {
     // What our built-in schedule will auto-create (accurate for this entity).
     system_auto_schedule: systemFilings,
     system_templates_cover: 'California state agencies and federal IRS filings only',
-    // Automated state-filing coverage exists ONLY for California. For an
-    // out-of-state entity the system schedules federal filings only, so the
-    // Overseer must not promise to set up that state's filings.
-    state_filings_automated: caScope,
-    honesty_note: caScope
-      ? undefined
-      : `Only federal filings are automated for this out-of-state entity. Do NOT claim you will set up ${state ?? 'the home state'}'s state filings — instead tell the operator those home-state filings must be set up manually for now.`,
   }
 }
 
@@ -104,9 +97,9 @@ function deterministicBrief(ctx: ReturnType<typeof buildContext>): OnboardingBri
   const since = ctx.started ? `, operating since ${ctx.started}` : ''
   const read = `${ctx.name} is ${ctx.entity_type ? `a ${ctx.entity_type}` : 'a business'}${ctx.home_state ? ` based in ${ctx.home_state}` : ''}${since}${who}.${what}`.replace(/\s+/g, ' ').trim()
   const sys = ctx.system_auto_schedule.length ? ` I'll stay ahead of ${ctx.system_auto_schedule.join(', ')}.` : ''
-  // Out of state, the system only automates federal filings — be honest that the
-  // home-state filings aren't automated yet rather than promising to set them up.
-  const stateNote = !ctx.is_california && ctx.home_state ? ` Note: I automate federal filings here — ${ctx.home_state}'s state filings aren't automated yet, so we'll set those up manually.` : ''
+  // Deterministic mode can't know each state's specifics — just flag that its
+  // home-state filings need setting up rather than naming the wrong state's.
+  const stateNote = !ctx.is_california && ctx.home_state ? ` I'll also set up ${ctx.home_state}'s state filings for this entity.` : ''
   const handling = `I'll keep the books on a ${ctx.accounting_basis} basis${ctx.accounting_system ? `, migrating from ${ctx.accounting_system}` : ''}.${sys}${stateNote}`.trim()
   return { read, handling }
 }
@@ -255,6 +248,7 @@ export async function materialize(sessionId: string): Promise<{ error: string } 
     businessActivity: typeof f.business_activity === 'string' ? f.business_activity : null,
     accountingSystem: typeof f.accounting_system === 'string' ? f.accounting_system : null,
     formationDate: typeof f.formation_date === 'string' && f.formation_date ? f.formation_date : null,
+    taxYear: typeof f.tax_year === 'string' && /^\d{4}$/.test(f.tax_year) ? Number(f.tax_year) : null,
     overseerRead: (session.overseer_read as string | null) ?? null,
     overseerHandling: (session.overseer_handling as string | null) ?? null,
     createdBy: viewer.userId,

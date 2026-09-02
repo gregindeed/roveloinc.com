@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client'
 import { parseUploadedDoc, moveDocument, applyExtractedFields } from '@/app/admin/clients/[slug]/intake-actions'
 import { DOC_CATEGORIES, MONTHS, categoryLabel, monthLabel } from '@/lib/folders'
 import { ENTITY_FIELD_LABELS, type DocumentRow } from '@/lib/types'
-import { sha256Hex } from '@/lib/docHash'
 
 const BUCKET = 'client-docs'
 
@@ -26,11 +25,13 @@ type Item = { id: string; name: string; status: 'reading' | 'ready' | 'error'; r
 
 export default function GlobalIntake({
   slug,
+  year,
   clientId,
   currentUserId,
   current,
 }: {
   slug: string
+  year: number
   clientId: string
   currentUserId: string
   current: Record<string, string | null>
@@ -46,12 +47,12 @@ export default function GlobalIntake({
   const [applyingAll, setApplyingAll] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const base = `/admin/clients/${slug}/documents`
+  const base = `/admin/clients/${slug}/${year}/documents`
 
   function destOf(row: DocumentRow): { text: string; href: string } {
     const f = row.folder
     if (f === 'permanent') return { text: 'Account details · Formation & Legal', href: `/admin/clients/${slug}/account` }
-    if (f === 'agency_notices') return { text: 'Compliance · Notices', href: `/admin/clients/${slug}/compliance` }
+    if (f === 'agency_notices') return { text: 'Compliance · Notices', href: `/admin/clients/${slug}/${year}/compliance` }
     const y = row.period_year
     if (y == null) return { text: 'Documents & Sources · Unfiled', href: `${base}?year=unfiled` }
     const catSlug = DOC_CATEGORIES.some((c) => c.slug === f) ? (f as string) : 'other'
@@ -67,21 +68,9 @@ export default function GlobalIntake({
 
   const patch = (id: string, p: Partial<Item>) => setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...p } : it)))
 
-  async function ingest(file: File): Promise<'added' | 'duplicate'> {
+  async function ingest(file: File) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
     const path = `${clientId}/${Date.now()}-${safeName}`
-
-    // Reject an exact duplicate before uploading anything.
-    const contentHash = await sha256Hex(file)
-    const { data: dupe } = await supabase
-      .from('documents')
-      .select('id')
-      .eq('client_id', clientId)
-      .eq('content_hash', contentHash)
-      .limit(1)
-      .maybeSingle()
-    if (dupe) return 'duplicate'
-
     const { error: upErr } = await supabase.storage
       .from(BUCKET)
       .upload(path, file, { contentType: file.type || undefined, upsert: false })
@@ -95,7 +84,6 @@ export default function GlobalIntake({
         storage_path: path,
         content_type: file.type || null,
         size_bytes: file.size,
-        content_hash: contentHash,
         uploaded_by: currentUserId,
         uploaded_by_role: 'admin',
         doc_type: 'other',
@@ -106,7 +94,6 @@ export default function GlobalIntake({
       .single()
     if (insErr) {
       await supabase.storage.from(BUCKET).remove([path])
-      if ((insErr as { code?: string }).code === '23505') return 'duplicate'
       throw insErr
     }
     const id = ins!.id as string
@@ -114,25 +101,18 @@ export default function GlobalIntake({
     await parseUploadedDoc(slug, id, true)
     const row = await fetchRow(id)
     patch(id, { status: row?.ai_status === 'failed' ? 'error' : 'ready', row })
-    return 'added'
   }
 
   async function handleFiles(files: FileList | File[]) {
     setError(null)
     setBusy(true)
-    let dupes = 0
     try {
-      for (const f of Array.from(files)) {
-        if ((await ingest(f)) === 'duplicate') dupes++
-      }
+      for (const f of Array.from(files)) await ingest(f)
     } catch (e) {
       setError(`Upload failed: ${errMsg(e)}`)
     } finally {
       setBusy(false)
       if (fileRef.current) fileRef.current.value = ''
-    }
-    if (dupes > 0) {
-      setError(`Skipped ${dupes} duplicate file${dupes === 1 ? '' : 's'} already saved for this client.`)
     }
   }
 

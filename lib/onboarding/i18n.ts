@@ -94,6 +94,7 @@ const PROMPT_ES: Record<string, string> = {
   has_employees: '¿{name} tiene empleados?',
   accounting_basis: '¿Cómo debemos llevar los libros?',
   accounting_system: '¿Qué usan para la contabilidad hoy?',
+  tax_year: '¿Qué año fiscal vamos a abrir para {name}?',
 }
 
 const HELP_ES: Record<string, string> = {
@@ -104,6 +105,7 @@ const HELP_ES: Record<string, string> = {
   business_activity: 'Una breve descripción del negocio o su industria.',
   has_employees: 'Esto determina la nómina y las declaraciones patronales (EDD, IRS 941 / 940).',
   accounting_system: 'Opcional — me ayuda a planear la migración y el catálogo de cuentas.',
+  tax_year: 'Puedes abrir más años después — cada año se trabaja y se cierra por separado.',
 }
 
 // Keyed by the canonical English label.
@@ -202,6 +204,8 @@ export function localizeSummary(locale: Locale, key: string, value: unknown): st
       const v = typeof value === 'string' ? value : null
       return v ? OPT_ES[v] ?? v : null
     }
+    case 'tax_year':
+      return typeof value === 'string' && value ? value : null
     default:
       return value == null ? null : String(value)
   }

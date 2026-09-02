@@ -7,6 +7,8 @@ import { requirePlatform } from '@/lib/auth'
 import { inviteFirmManager, resetManagerAccess } from '../actions'
 import Avatar from '@/components/Avatar'
 import { isOnline } from '@/lib/presence'
+import { getLocale } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
 import type { Organization } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -20,6 +22,7 @@ export default async function FirmProperties({
   searchParams: { ok?: string; error?: string }
 }) {
   await requirePlatform()
+  const locale = getLocale()
   const supabase = createClient()
   const {
     data: { user },
@@ -57,7 +60,7 @@ export default async function FirmProperties({
       <AuthHeader label="Admin" email={user?.email} settingsHref="/admin/team" />
       <main className="max-w-3xl mx-auto px-6 py-10">
         <Link href="/admin/firms" className="text-xs text-gray-500 hover:text-gray-900">
-          ← Firms
+          ← {t(locale, 'team.firms')}
         </Link>
 
         <div className="flex items-start justify-between gap-3 mt-4">
@@ -65,12 +68,17 @@ export default async function FirmProperties({
             <h1 className="text-xl font-bold text-gray-900">
               {firm.name}
               {firm.is_platform && (
-                <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-violet-600 align-middle">Your firm</span>
+                <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-violet-600 align-middle">{t(locale, 'team.yourFirm')}</span>
               )}
             </h1>
             <p className="text-xs text-gray-500 mt-1">
-              {accounts.length} account{accounts.length === 1 ? '' : 's'} · {managers.length} manager
-              {managers.length === 1 ? '' : 's'}
+              {accounts.length === 1
+                ? t(locale, 'team.accountsOne', { n: accounts.length })
+                : t(locale, 'team.accountsOther', { n: accounts.length })}{' '}
+              ·{' '}
+              {managers.length === 1
+                ? t(locale, 'team.managersOne', { n: managers.length })
+                : t(locale, 'team.managersOther', { n: managers.length })}
             </p>
             {firm.notes && <p className="text-sm text-gray-600 mt-3 leading-relaxed max-w-xl">{firm.notes}</p>}
           </div>
@@ -81,7 +89,7 @@ export default async function FirmProperties({
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M12 5v14M5 12h14" />
             </svg>
-            New account
+            {t(locale, 'team.newAccount')}
           </Link>
         </div>
 
@@ -98,8 +106,8 @@ export default async function FirmProperties({
 
         {/* Managers */}
         <div className="mt-8 rounded-xl border border-gray-200 p-5">
-          <h2 className="text-sm font-semibold text-gray-900">Accountant-managers</h2>
-          <p className="text-xs text-gray-500 mt-0.5 mb-3">They see and manage only this firm&apos;s accounts.</p>
+          <h2 className="text-sm font-semibold text-gray-900">{t(locale, 'team.accountantManagers')}</h2>
+          <p className="text-xs text-gray-500 mt-0.5 mb-3">{t(locale, 'team.accountantManagersHint')}</p>
           {managers.length > 0 ? (
             <div className="space-y-1.5 mb-3">
               {managers.map((m) => (
@@ -115,7 +123,7 @@ export default async function FirmProperties({
                     <form action={resetManagerAccess.bind(null, firm.id)}>
                       <input type="hidden" name="email" value={m.email} />
                       <button className="shrink-0 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors whitespace-nowrap">
-                        Resend access link
+                        {t(locale, 'team.resendAccess')}
                       </button>
                     </form>
                   )}
@@ -123,7 +131,7 @@ export default async function FirmProperties({
               ))}
             </div>
           ) : (
-            <p className="text-xs text-gray-400 mb-3">No managers yet.</p>
+            <p className="text-xs text-gray-400 mb-3">{t(locale, 'team.noManagers')}</p>
           )}
           <form action={inviteFirmManager.bind(null, firm.id)} className="flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3">
             <input
@@ -133,15 +141,15 @@ export default async function FirmProperties({
               placeholder="manager@firm.com"
               className="flex-1 min-w-[220px] border border-gray-200 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
-            <button className="text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors">Send invite</button>
+            <button className="text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors">{t(locale, 'team.sendInvite')}</button>
           </form>
         </div>
 
         {/* Accounts under this firm */}
         <div className="mt-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-2">Accounts</h2>
+          <h2 className="text-sm font-semibold text-gray-900 mb-2">{t(locale, 'team.accounts')}</h2>
           {accounts.length === 0 ? (
-            <p className="text-xs text-gray-400">No accounts yet — onboard the first with “New account” above.</p>
+            <p className="text-xs text-gray-400">{t(locale, 'team.noAccounts')}</p>
           ) : (
             <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
               {accounts.map((c) => (

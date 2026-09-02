@@ -4,12 +4,13 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-export default function PeriodBar({ years }: { years: number[] }) {
+// Sub-period selector WITHIN the entity's chosen tax year (the year itself is
+// the workspace context, not a filter here).
+export default function PeriodBar() {
   const router = useRouter()
   const path = usePathname()
   const sp = useSearchParams()
 
-  const year = sp.get('year') ?? String(years[0])
   const q = sp.get('q')
   const month = sp.get('month')
   const day = sp.get('day')
@@ -33,14 +34,6 @@ export default function PeriodBar({ years }: { years: number[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2 border border-gray-200 rounded-xl px-3 py-2">
-      <select value={year} onChange={(e) => apply({ year: e.target.value })} className={inputCls}>
-        {years.map((y) => (
-          <option key={y} value={y}>
-            {y}
-          </option>
-        ))}
-      </select>
-
       <div className="flex items-center gap-0.5 bg-gray-50 rounded-lg p-0.5">
         <button className={btn(isFullYear)} onClick={() => apply({ q: null, month: null, day: null })}>
           Full year

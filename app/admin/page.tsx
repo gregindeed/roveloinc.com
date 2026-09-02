@@ -1,11 +1,15 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import AuthHeader from '@/components/AuthHeader'
 import ClientRoster, { type RosterRow } from '@/components/ClientRoster'
 import FirmMenu from '@/components/FirmMenu'
 import { getViewer } from '@/lib/auth'
+import { entityPresence } from '@/lib/presenceServer'
 import { deriveAttention, type StateRow } from '@/lib/brief'
 import { ENTITY_TYPE_LABELS, type Client, type EntityType, type Organization } from '@/lib/types'
+import { getLocale } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
 
 export const dynamic = 'force-dynamic'
 export const metadata = {
@@ -25,6 +29,7 @@ function Plus({ className = 'h-3.5 w-3.5' }: { className?: string }) {
 }
 
 export default async function AdminHome({ searchParams }: { searchParams: { ok?: string } }) {
+  const locale = getLocale()
   const supabase = createClient()
   const {
     data: { user },
@@ -41,8 +46,8 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
     { data: openProposals },
   ] = await Promise.all([
     supabase.from('clients').select('*').order('name'),
-    supabase.from('obligations').select('client_id'),
-    supabase.from('obligation_events').select('client_id, due_date, status'),
+    supabase.from('obligations').select('client_id').eq('verified', true),
+    supabase.from('obligation_events').select('client_id, due_date, status').eq('verified', true),
     supabase.from('organizations').select('*').order('is_platform', { ascending: false }).order('name'),
     supabase.from('entity_state').select('*'),
     supabase.from('field_reviews').select('client_id').eq('status', 'pending'),
@@ -74,6 +79,29 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   const reviewCount = countBy(pendingReviews as { client_id: string }[] | null)
   const proposalCount = countBy(openProposals as { client_id: string }[] | null)
 
+  // Who's currently working in each entity (excludes you).
+  const presenceByClient = await entityPresence(
+    createAdminClient(),
+    list.map((c) => c.id),
+    { excludeUserId: user?.id }
+  )
+
+  // The active tax year each entity is working in (newest open, else newest).
+  const { data: cyRows } = await supabase.from('client_years').select('client_id, year, status')
+  const yearsByClient = new Map<string, { year: number; active: boolean }[]>()
+  for (const r of cyRows ?? []) {
+    const cid = r.client_id as string
+    const arr = yearsByClient.get(cid) ?? []
+    arr.push({ year: r.year as number, active: r.status !== 'closed' })
+    yearsByClient.set(cid, arr)
+  }
+  const activeYear = (cid: string): number | null => {
+    const ys = yearsByClient.get(cid) ?? []
+    const open = ys.filter((y) => y.active).map((y) => y.year)
+    if (open.length) return Math.max(...open)
+    return ys.length ? Math.max(...ys.map((y) => y.year)) : null
+  }
+
   const attentionByClient = new Map<string, RosterRow['attention']>()
   for (const c of all) {
     const a = deriveAttention({
@@ -98,6 +126,8 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
       overdue: overdueByClient[c.id] ?? 0,
       enrolled: hasOb.has(c.id),
       attention: attentionByClient.get(c.id),
+      presence: presenceByClient.get(c.id),
+      year: activeYear(c.id),
     }))
 
   const byOrg: Record<string, Client[]> = {}
@@ -110,11 +140,11 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
     <>
       {isPlatform ? (
         <Link href="/admin/firms/new" className={navAction}>
-          <Plus className="h-3 w-3 text-gray-400" /> New firm
+          <Plus className="h-3 w-3 text-gray-400" /> {t(locale, 'admin.newFirm')}
         </Link>
       ) : viewer?.role === 'admin' ? (
         <Link href="/admin/new/guided" className={navAction}>
-          <Plus className="h-3 w-3 text-gray-400" /> New account
+          <Plus className="h-3 w-3 text-gray-400" /> {t(locale, 'admin.newAccount')}
         </Link>
       ) : null}
     </>
@@ -123,7 +153,7 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   return (
     <div className="min-h-screen bg-white">
       <AuthHeader
-        label="Admin"
+        label={t(locale, 'admin.adminNav')}
         email={user?.email}
         settingsHref={viewer?.isOwner ? '/admin/team' : null}
         actions={navActions}
@@ -137,14 +167,14 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
 
         {list.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 p-10 text-center">
-            <p className="text-sm text-gray-500">No accounts yet.</p>
+            <p className="text-sm text-gray-500">{t(locale, 'admin.noAccounts')}</p>
             {isPlatform ? (
               <Link href="/admin/firms/new" className={`${navAction} mt-4`}>
-                <Plus className="h-3 w-3 text-gray-400" /> Onboard your first firm
+                <Plus className="h-3 w-3 text-gray-400" /> {t(locale, 'admin.onboardFirstFirm')}
               </Link>
             ) : viewer?.role === 'admin' ? (
               <Link href="/admin/new/guided" className={`${navAction} mt-4`}>
-                <Plus className="h-3 w-3 text-gray-400" /> Onboard your first account
+                <Plus className="h-3 w-3 text-gray-400" /> {t(locale, 'admin.onboardFirstAccount')}
               </Link>
             ) : null}
           </div>
@@ -158,10 +188,10 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
                     <h2 className="text-sm font-semibold text-gray-900">
                       {f.name}
                       {f.is_platform && (
-                        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-violet-600">Your firm</span>
+                        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-violet-600">{t(locale, 'admin.yourFirm')}</span>
                       )}
                       <span className="ml-2 text-xs font-normal text-gray-400">
-                        {rows.length} account{rows.length === 1 ? '' : 's'}
+                        {t(locale, rows.length === 1 ? 'admin.accountsOne' : 'admin.accountsOther', { n: rows.length })}
                       </span>
                     </h2>
                     {viewer?.role === 'admin' && <FirmMenu firmId={f.id} canManage={isPlatform} />}
@@ -176,10 +206,10 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
         {archived.length > 0 && (
           <details className="mt-10 group">
             <summary className="cursor-pointer text-sm font-semibold text-gray-500 hover:text-gray-800 select-none">
-              Archived · {archived.length}
+              {t(locale, 'admin.archived')} · {archived.length}
             </summary>
             <p className="text-xs text-gray-400 mt-1 mb-3">
-              No longer active engagements. Books are kept; open one to restore it.
+              {t(locale, 'admin.archivedHint')}
             </p>
             <div className="opacity-70">
               <ClientRoster rows={toRows(archived)} />

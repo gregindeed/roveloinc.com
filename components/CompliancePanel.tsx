@@ -1,5 +1,7 @@
 import { AGENCY_LABELS, type Obligation, type ObligationEvent } from '@/lib/types'
 import { markEventPaid, resetEvent, removeObligation } from '@/app/admin/clients/[slug]/compliance-actions'
+import { getLocale } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
 
 const money = (n: number | null) =>
   n == null ? '—' : n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -26,6 +28,7 @@ export default function CompliancePanel({
   events: ObligationEvent[]
   isAdmin: boolean
 }) {
+  const locale = getLocale()
   const today = new Date().toISOString().slice(0, 10)
   const byOb = new Map<string, ObligationEvent[]>()
   for (const e of events) {
@@ -43,10 +46,10 @@ export default function CompliancePanel({
     <div className="border border-gray-200 rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-900">
-          Compliance
+          {t(locale, 'compliance.title')}
           {openOverdue > 0 && (
             <span className="ml-2 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
-              {openOverdue} overdue
+              {t(locale, 'compliance.overdue', { n: openOverdue })}
             </span>
           )}
         </h2>
@@ -67,7 +70,7 @@ export default function CompliancePanel({
                   {isAdmin && (
                     <form action={removeObligation.bind(null, slug, ob.id)}>
                       <button type="submit" className="text-xs text-gray-400 hover:text-red-600">
-                        Remove
+                        {t(locale, 'compliance.remove')}
                       </button>
                     </form>
                   )}
@@ -76,7 +79,7 @@ export default function CompliancePanel({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50">
-                        {['Period', 'Due', 'Amount', 'Status', ''].map((h, i) => (
+                        {[t(locale, 'compliance.period'), t(locale, 'compliance.due'), t(locale, 'compliance.amount'), t(locale, 'compliance.status'), ''].map((h, i) => (
                           <th key={i} className="text-left px-3 py-2 text-[11px] uppercase tracking-wide text-gray-500 font-medium">
                             {h}
                           </th>
@@ -101,13 +104,13 @@ export default function CompliancePanel({
                                 (st === 'paid' ? (
                                   <form action={resetEvent.bind(null, slug, ev.id)}>
                                     <button type="submit" className="text-xs text-gray-400 hover:text-gray-700">
-                                      Undo
+                                      {t(locale, 'compliance.undo')}
                                     </button>
                                   </form>
                                 ) : (
                                   <form action={markEventPaid.bind(null, slug, ev.id)}>
                                     <button type="submit" className="text-xs font-medium text-gray-700 hover:text-gray-900">
-                                      Mark paid
+                                      {t(locale, 'compliance.markPaid')}
                                     </button>
                                   </form>
                                 ))}
@@ -127,15 +130,16 @@ export default function CompliancePanel({
 }
 
 function StatusBadge({ status, paidDate }: { status: 'paid' | 'overdue' | 'upcoming'; paidDate: string | null }) {
+  const locale = getLocale()
   if (status === 'paid') {
     return (
       <span className="text-[11px] font-medium text-green-700">
-        Paid{paidDate ? ` · ${fmtDate(paidDate)}` : ''}
+        {t(locale, 'compliance.paid')}{paidDate ? ` · ${fmtDate(paidDate)}` : ''}
       </span>
     )
   }
   if (status === 'overdue') {
-    return <span className="text-[11px] font-semibold text-red-700">Overdue</span>
+    return <span className="text-[11px] font-semibold text-red-700">{t(locale, 'compliance.overdueStatus')}</span>
   }
-  return <span className="text-[11px] text-gray-500">Upcoming</span>
+  return <span className="text-[11px] text-gray-500">{t(locale, 'compliance.upcoming')}</span>
 }

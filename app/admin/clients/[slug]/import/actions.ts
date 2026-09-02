@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { entityBase } from '@/lib/entityYear'
 
 export type ImportTarget = 'deposits' | 'checking' | 'cc'
 
@@ -76,7 +77,7 @@ export async function importRows(
   const { error } = await supabase.from(table).insert(payload)
   if (error) return { ok: false, error: error.message }
 
-  revalidatePath(`/admin/clients/${slug}/transactions`)
-  revalidatePath(`/admin/clients/${slug}/expenses`)
+  revalidatePath(`${entityBase(slug)}/transactions`)
+  revalidatePath(`${entityBase(slug)}/expenses`)
   return { ok: true, count: payload.length }
 }

@@ -14,8 +14,8 @@ export async function gatherAndCompute(supabase: DB, c: Client): Promise<EntityS
       supabase.from('entity_officers').select('id').eq('client_id', c.id),
       supabase.from('documents').select('doc_type, created_at').eq('client_id', c.id),
       supabase.from('statement_imports').select('period_start, period_end, reconciled').eq('client_id', c.id),
-      supabase.from('obligation_events').select('period_label, due_date, status').eq('client_id', c.id),
-      supabase.from('obligations').select('id').eq('client_id', c.id),
+      supabase.from('obligation_events').select('period_label, due_date, status').eq('client_id', c.id).eq('verified', true),
+      supabase.from('obligations').select('id').eq('client_id', c.id).eq('verified', true),
     ])
 
   const docRows = (docs ?? []) as { doc_type: string | null; created_at: string | null }[]

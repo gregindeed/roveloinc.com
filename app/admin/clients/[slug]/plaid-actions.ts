@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createLinkToken } from '@/lib/plaid'
 import { connectItem, syncClient, disconnectItem } from '@/lib/plaidServer'
 import { autoCategorizeAll } from './ledger-actions'
+import { entityBase } from '@/lib/entityYear'
 
 async function worker() {
   const supabase = createClient()
@@ -32,10 +33,11 @@ function webhookUrl(): string | undefined {
 }
 
 const revalidate = (slug: string) => {
-  revalidatePath(`/admin/clients/${slug}/statements`)
-  revalidatePath(`/admin/clients/${slug}`)
-  revalidatePath(`/admin/clients/${slug}/transactions`)
-  revalidatePath(`/admin/clients/${slug}/expenses`)
+  const base = entityBase(slug)
+  revalidatePath(`${base}/statements`)
+  revalidatePath(base)
+  revalidatePath(`${base}/transactions`)
+  revalidatePath(`${base}/expenses`)
 }
 
 // Create a Plaid Link token for the browser to open Plaid Link with.

@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import AvatarStack from './AvatarStack'
+import { useT } from '@/components/I18nProvider'
+import type { PresenceUser } from '@/lib/presenceServer'
 
 export type RosterRow = {
   id: string
@@ -15,6 +18,8 @@ export type RosterRow = {
   overdue: number
   enrolled: boolean
   attention?: { level: 'critical' | 'warning' | 'info'; reasons: string[] }
+  presence?: PresenceUser[]
+  year?: number | null
 }
 
 // Surface = neutral identity only. No scores, no severity colors — an entity's
@@ -39,10 +44,11 @@ function Chevron({ open }: { open: boolean }) {
 }
 
 function ReadinessLine({ score }: { score: number | undefined }) {
+  const t = useT()
   if (score == null) return null
   return (
     <div className="flex items-center gap-2 mb-2">
-      <span className="text-[11px] text-gray-400 w-16">Readiness</span>
+      <span className="text-[11px] text-gray-400 w-16">{t('admin.readiness')}</span>
       <div className="h-[3px] w-28 rounded-full bg-gray-100 overflow-hidden">
         <div className={`h-full rounded-full ${score < 50 ? 'bg-red-300' : 'bg-gray-400'}`} style={{ width: `${Math.max(3, score)}%` }} />
       </div>
@@ -52,15 +58,16 @@ function ReadinessLine({ score }: { score: number | undefined }) {
 }
 
 export default function ClientRoster({ rows }: { rows: RosterRow[] }) {
+  const t = useT()
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }))
 
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
       <div className={`${COLS} px-4 py-2 bg-gray-50/70 border-b border-gray-200`}>
-        <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">Account</div>
-        <div className="hidden md:block text-[10px] font-medium uppercase tracking-wide text-gray-400">Type</div>
-        <div className="hidden md:block text-[10px] font-medium uppercase tracking-wide text-gray-400">EIN</div>
+        <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{t('admin.account')}</div>
+        <div className="hidden md:block text-[10px] font-medium uppercase tracking-wide text-gray-400">{t('admin.type')}</div>
+        <div className="hidden md:block text-[10px] font-medium uppercase tracking-wide text-gray-400">{t('admin.ein')}</div>
         <div />
       </div>
 
@@ -73,6 +80,7 @@ export default function ClientRoster({ rows }: { rows: RosterRow[] }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] font-medium text-gray-900 truncate">{c.name}</span>
+                  {c.year && <span className="text-[10px] font-medium text-gray-400 tabular-nums">· {c.year}</span>}
                   {dissolved && <span className="text-[10px] text-gray-400 capitalize">· {c.status}</span>}
                 </div>
                 <div className="text-[11px] text-gray-400 truncate">{c.sub}</div>
@@ -83,18 +91,21 @@ export default function ClientRoster({ rows }: { rows: RosterRow[] }) {
               <div className="hidden md:block text-xs text-gray-500 tabular-nums">
                 {c.ein ?? <span className="text-gray-300">—</span>}
               </div>
-              <button
-                type="button"
-                aria-label={isOpen ? 'Hide details' : 'Show details'}
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  toggle(c.id)
-                }}
-                className="justify-self-end p-1 -m-1 rounded hover:bg-gray-100"
-              >
-                <Chevron open={isOpen} />
-              </button>
+              <div className="justify-self-end flex items-center gap-2.5">
+                {c.presence && c.presence.length > 0 && <AvatarStack users={c.presence} size={20} max={3} />}
+                <button
+                  type="button"
+                  aria-label={isOpen ? t('admin.hideDetails') : t('admin.showDetails')}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    toggle(c.id)
+                  }}
+                  className="p-1 -m-1 rounded hover:bg-gray-100"
+                >
+                  <Chevron open={isOpen} />
+                </button>
+              </div>
             </Link>
 
             {isOpen && (
@@ -110,20 +121,14 @@ export default function ClientRoster({ rows }: { rows: RosterRow[] }) {
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-gray-400 mb-2.5">Nothing outstanding.</p>
+                  <p className="text-xs text-gray-400 mb-2.5">{t('admin.nothingOutstanding')}</p>
                 )}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
                   <Link href={`/admin/clients/${c.slug}`} className="font-medium text-gray-900 hover:underline">
-                    Open books →
-                  </Link>
-                  <Link href={`/admin/clients/${c.slug}/compliance`} className="text-gray-400 hover:text-gray-900">
-                    Compliance
-                  </Link>
-                  <Link href={`/admin/clients/${c.slug}/documents`} className="text-gray-400 hover:text-gray-900">
-                    Documents
+                    {t('admin.openBooks')} →
                   </Link>
                   <Link href={`/admin/clients/${c.slug}/account`} className="text-gray-400 hover:text-gray-900">
-                    Settings
+                    {t('admin.settings')}
                   </Link>
                 </div>
               </div>

@@ -3,10 +3,12 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import * as XLSX from 'xlsx'
 import { parseStatementDoc, parseStatementText, type ParsedStatement } from '@/lib/ai'
 import { autoCategorizeAll } from './ledger-actions'
 import { recomputeBySlug } from '@/lib/entityStateServer'
 import { scanAndMatch } from '@/lib/signalsServer'
+import { entityBase } from '@/lib/entityYear'
 
 const BUCKET = 'client-docs'
 
@@ -34,64 +36,46 @@ function imgMime(ext: string): string {
   return 'image/png'
 }
 
+function spreadsheetToText(buf: ArrayBuffer): string {
+  const wb = XLSX.read(buf, { type: 'array' })
+  const parts: string[] = []
+  for (const name of wb.SheetNames) parts.push(`# Sheet: ${name}\n${XLSX.utils.sheet_to_csv(wb.Sheets[name])}`)
+  return parts.join('\n\n')
+}
+
 type ParseResult =
   | { ok: true; statement: ParsedStatement; possibleDuplicates: number }
   | { ok: false; error: string }
 
-// Normalize a bank description so OCR jitter doesn't defeat de-duplication:
-// drop everything from a confirmation code onward, strip long digit runs
-// (reference numbers), remove punctuation, collapse whitespace. Mirrors the
-// SQL normalize() used in the one-off cleanup so import-time and cleanup-time
-// dedup agree.
-function normDesc(desc: string): string {
-  return (desc || '')
-    .toLowerCase()
-    .split('conf')[0]
-    .replace(/[0-9]{4,}/g, ' ')
-    .replace(/[^a-z0-9/ ]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-// De-dup key. Bank deposits/card omit check_num; checking includes it so two
-// genuinely different checks (same day/amount) never collapse.
-const normKey = (date: string, amount: number, desc: string, checkNum?: string | null) =>
-  `${date}|${Math.round((Number(amount) || 0) * 100)}|${checkNum ?? ''}|${normDesc(desc)}`
+const dupeKey = (date: string, amount: number, desc: string) =>
+  `${date}|${amount}|${(desc || '').trim().toLowerCase()}`
 
 // Parse an already-uploaded statement file into structured line items + balances.
 export async function parseStatementFile(
   slug: string,
   storagePath: string,
   filename: string,
-  contentType: string,
-  pretext?: string
+  contentType: string
 ): Promise<ParseResult> {
   const supabase = await admin()
   const ext = (filename.split('.').pop() || '').toLowerCase()
   const media = contentType || ''
   const isPdf = media === 'application/pdf' || ext === 'pdf'
   const isImg = media.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext)
-  const isExcel = ['xls', 'xlsx', 'xlsm', 'xlsb', 'ods'].includes(ext) || /sheet|excel/.test(media)
-  const isText = media.startsWith('text/') || ['txt', 'csv', 'tsv'].includes(ext)
-  const hasPretext = !!(pretext && pretext.trim())
+  const isSheet = ['xls', 'xlsx', 'xlsm', 'csv', 'tsv'].includes(ext) || /sheet|excel|csv/.test(media)
+  const isText = media.startsWith('text/') || ['txt'].includes(ext)
 
   try {
     let statement: ParsedStatement
-    if (hasPretext) {
-      // Spreadsheet text extracted in the browser — no Worker XLSX (1102-safe).
-      statement = await parseStatementText(pretext!)
-    } else if (isPdf || isImg) {
+    if (isPdf || isImg) {
       const mt = isPdf ? 'application/pdf' : media.startsWith('image/') ? media : imgMime(ext)
       const { data: signed, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, 300)
       if (error || !signed?.signedUrl) return { ok: false, error: error?.message || 'Could not read the file.' }
       statement = await parseStatementDoc({ mediaType: mt, url: signed.signedUrl })
-    } else if (isExcel) {
-      // Never parse XLSX in the Worker (128MB / CPU → 1102). It should have been
-      // converted in the browser; if we got here, ask for a re-upload / CSV.
-      return {
-        ok: false,
-        error: 'Excel files are read in your browser — re-upload this one, or export it to CSV.',
-      }
+    } else if (isSheet) {
+      const { data: blob, error } = await supabase.storage.from(BUCKET).download(storagePath)
+      if (error || !blob) return { ok: false, error: error?.message || 'Could not download the file.' }
+      statement = await parseStatementText(spreadsheetToText(await blob.arrayBuffer()))
     } else if (isText) {
       const { data: blob, error } = await supabase.storage.from(BUCKET).download(storagePath)
       if (error || !blob) return { ok: false, error: error?.message || 'Could not download the file.' }
@@ -108,17 +92,15 @@ export async function parseStatementFile(
     const clientId = await clientIdFor(supabase, slug)
     if (clientId) {
       const [{ data: d }, { data: c }, { data: cc }] = await Promise.all([
-        supabase.from('deposits').select('txn_date, amount, description').eq('client_id', clientId).limit(100000),
-        supabase.from('checking_expenses').select('txn_date, amount, description, check_num').eq('client_id', clientId).limit(100000),
-        supabase.from('cc_transactions').select('post_date, amount, description').eq('client_id', clientId).limit(100000),
+        supabase.from('deposits').select('txn_date, amount, description').eq('client_id', clientId),
+        supabase.from('checking_expenses').select('txn_date, amount, description').eq('client_id', clientId),
+        supabase.from('cc_transactions').select('post_date, amount, description').eq('client_id', clientId),
       ])
       const keys = new Set<string>()
-      for (const r of d ?? []) keys.add(normKey(String(r.txn_date), Number(r.amount), String(r.description)))
-      for (const r of c ?? []) keys.add(normKey(String(r.txn_date), Number(r.amount), String(r.description), (r as { check_num?: string | null }).check_num ?? null))
-      for (const r of cc ?? []) keys.add(normKey(String(r.post_date), Number(r.amount), String(r.description)))
-      possibleDuplicates = statement.transactions.filter((t) =>
-        keys.has(normKey(t.date, t.amount, t.description, t.direction === 'out' ? t.check_num ?? null : null))
-      ).length
+      for (const r of d ?? []) keys.add(dupeKey(String(r.txn_date), Number(r.amount), String(r.description)))
+      for (const r of c ?? []) keys.add(dupeKey(String(r.txn_date), Number(r.amount), String(r.description)))
+      for (const r of cc ?? []) keys.add(dupeKey(String(r.post_date), Number(r.amount), String(r.description)))
+      possibleDuplicates = statement.transactions.filter((t) => keys.has(dupeKey(t.date, t.amount, t.description))).length
     }
 
     return { ok: true, statement, possibleDuplicates }
@@ -158,71 +140,9 @@ export async function commitStatement(
     reconciled = Math.abs(difference) < 0.01
   }
 
-  // Statement-level idempotency: if this exact statement (same type + period +
-  // balances) was already imported, refuse to import it again. Row-level dedup
-  // can't catch OCR letter-jitter across re-parses of the same PDF, so we stop
-  // the whole statement at the door — this is what prevents a 4x-imported
-  // statement from ever stacking duplicates.
-  {
-    let q = supabase
-      .from('statement_imports')
-      .select('id', { head: true, count: 'exact' })
-      .eq('client_id', clientId)
-      .eq('statement_type', statementType)
-    q = statement.period_start ? q.eq('period_start', statement.period_start) : q.is('period_start', null)
-    q = statement.period_end ? q.eq('period_end', statement.period_end) : q.is('period_end', null)
-    q = ob != null ? q.eq('opening_balance', ob) : q.is('opening_balance', null)
-    q = cb != null ? q.eq('closing_balance', cb) : q.is('closing_balance', null)
-    const { count: already } = await q
-    if ((already ?? 0) > 0) {
-      return { ok: true, inserted: 0, reconciled, difference, hasBalances }
-    }
-  }
-
   const inRows = txns.filter((t) => t.direction === 'in')
   const outRows = txns.filter((t) => t.direction === 'out')
-
-  // Idempotent ingestion — the real cure for duplicate rows. Skip any parsed
-  // row that already exists on the books (same normalized key), and skip
-  // duplicates within this same batch. A re-import, an overlapping month, or a
-  // re-upload under a new storage path becomes a no-op for rows already present
-  // instead of stacking duplicates. (normKey folds away OCR jitter.)
-  const [{ data: exD }, { data: exC }, { data: exCC }] = await Promise.all([
-    supabase.from('deposits').select('txn_date, amount, description').eq('client_id', clientId).limit(100000),
-    supabase.from('checking_expenses').select('txn_date, amount, description, check_num').eq('client_id', clientId).limit(100000),
-    supabase.from('cc_transactions').select('post_date, amount, description').eq('client_id', clientId).limit(100000),
-  ])
-  const seenDep = new Set<string>()
-  const seenChk = new Set<string>()
-  const seenCc = new Set<string>()
-  for (const r of exD ?? []) seenDep.add(normKey(String(r.txn_date), Number(r.amount), String(r.description)))
-  for (const r of exC ?? [])
-    seenChk.add(normKey(String(r.txn_date), Number(r.amount), String(r.description), (r as { check_num?: string | null }).check_num ?? null))
-  for (const r of exCC ?? []) seenCc.add(normKey(String(r.post_date), Number(r.amount), String(r.description)))
-
-  const freshDeposits: { date: string; description: string; amount: number }[] = []
-  for (const t of inRows) {
-    const k = normKey(t.date, t.amount, t.description)
-    if (seenDep.has(k)) continue
-    seenDep.add(k)
-    freshDeposits.push({ date: t.date, description: t.description, amount: t.amount })
-  }
-  const freshChecking: { date: string; description: string; amount: number; check_num: string | null }[] = []
-  for (const t of outRows) {
-    const k = normKey(t.date, t.amount, t.description, t.check_num ?? null)
-    if (seenChk.has(k)) continue
-    seenChk.add(k)
-    freshChecking.push({ date: t.date, description: t.description, amount: t.amount, check_num: t.check_num ?? null })
-  }
-  const freshCharges: { date: string; description: string; amount: number }[] = []
-  for (const t of outRows) {
-    const k = normKey(t.date, t.amount, t.description)
-    if (seenCc.has(k)) continue
-    seenCc.add(k)
-    freshCharges.push({ date: t.date, description: t.description, amount: t.amount })
-  }
-
-  const plannedCount = statementType === 'bank' ? freshDeposits.length + freshChecking.length : freshCharges.length
+  const plannedCount = statementType === 'bank' ? inRows.length + outRows.length : outRows.length
 
   // Record the batch FIRST so every imported row can be tagged with its id —
   // that's what makes a re-import identifiable and an undo possible.
@@ -255,50 +175,50 @@ export async function commitStatement(
 
   let inserted = 0
   if (statementType === 'bank') {
-    if (freshDeposits.length) {
-      const rows = freshDeposits.map((t) => ({
-        client_id: clientId,
-        txn_date: t.date,
-        description: t.description,
-        amount: t.amount,
-        import_id: importId,
-      }))
-      const { error } = await supabase.from('deposits').insert(rows)
+    const deposits = inRows.map((t) => ({
+      client_id: clientId,
+      txn_date: t.date,
+      description: t.description,
+      amount: t.amount,
+      import_id: importId,
+    }))
+    const checking = outRows.map((t) => ({
+      client_id: clientId,
+      txn_date: t.date,
+      check_num: t.check_num ?? null,
+      description: t.description,
+      amount: t.amount,
+      import_id: importId,
+    }))
+    if (deposits.length) {
+      const { error } = await supabase.from('deposits').insert(deposits)
       if (error) return fail(error.message)
-      inserted += rows.length
+      inserted += deposits.length
     }
-    if (freshChecking.length) {
-      const rows = freshChecking.map((t) => ({
-        client_id: clientId,
-        txn_date: t.date,
-        check_num: t.check_num,
-        description: t.description,
-        amount: t.amount,
-        import_id: importId,
-      }))
-      const { error } = await supabase.from('checking_expenses').insert(rows)
+    if (checking.length) {
+      const { error } = await supabase.from('checking_expenses').insert(checking)
       if (error) return fail(error.message)
-      inserted += rows.length
+      inserted += checking.length
     }
   } else {
     // Card: insert charges (out) only. Payments (in) are recorded on the bank
     // side (checking → Credit Card Payable), so inserting them here would
     // double-count — they're used for reconciliation math only.
     const label = payload.filename.replace(/\.[^.]+$/, '').slice(0, 60)
-    if (freshCharges.length) {
-      const rows = freshCharges.map((t) => ({
-        client_id: clientId,
-        post_date: t.date,
-        txn_date: t.date,
-        account: label,
-        description: t.description,
-        amount: t.amount,
-        personal: false,
-        import_id: importId,
-      }))
-      const { error } = await supabase.from('cc_transactions').insert(rows)
+    const charges = outRows.map((t) => ({
+      client_id: clientId,
+      post_date: t.date,
+      txn_date: t.date,
+      account: label,
+      description: t.description,
+      amount: t.amount,
+      personal: false,
+      import_id: importId,
+    }))
+    if (charges.length) {
+      const { error } = await supabase.from('cc_transactions').insert(charges)
       if (error) return fail(error.message)
-      inserted += rows.length
+      inserted += charges.length
     }
   }
 
@@ -314,10 +234,10 @@ export async function commitStatement(
     await recomputeBySlug(supabase, slug)
   }
 
-  revalidatePath(`/admin/clients/${slug}/statements`)
-  revalidatePath(`/admin/clients/${slug}`)
-  revalidatePath(`/admin/clients/${slug}/transactions`)
-  revalidatePath(`/admin/clients/${slug}/expenses`)
+  revalidatePath(`${entityBase(slug)}/statements`)
+  revalidatePath(entityBase(slug))
+  revalidatePath(`${entityBase(slug)}/transactions`)
+  revalidatePath(`${entityBase(slug)}/expenses`)
   return { ok: true, inserted, reconciled, difference, hasBalances }
 }
 
@@ -330,115 +250,8 @@ export async function undoImport(slug: string, importId: string, _fd?: FormData)
   await supabase.from('cc_transactions').delete().eq('import_id', importId)
   await supabase.from('statement_imports').delete().eq('id', importId)
   await recomputeBySlug(supabase, slug)
-  revalidatePath(`/admin/clients/${slug}/statements`)
-  revalidatePath(`/admin/clients/${slug}`)
-  revalidatePath(`/admin/clients/${slug}/transactions`)
-  revalidatePath(`/admin/clients/${slug}/expenses`)
-}
-
-export type ScanStatementResult = { name: string; posted: number; reconciled: boolean | null; difference: number; type: 'bank' | 'card'; error?: string }
-export type ScanResult =
-  | { ok: true; processed: number; posted: number; statements: ScanStatementResult[] }
-  | { ok: false; error: string }
-
-// One-click batch: read every bank/card statement that's already been uploaded to
-// Documents but never posted, extract its transactions, and commit them — the
-// "Overseer, bring in everything you can find" action. Statement-level idempotent:
-// a doc whose stored file already appears in statement_imports is skipped, so
-// re-running only picks up what's new. Each committed batch stays undoable from
-// the import history, and any statement that doesn't reconcile is flagged here.
-export async function scanUploadedStatements(slug: string): Promise<ScanResult> {
-  const supabase = await admin()
-  const clientId = await clientIdFor(supabase, slug)
-  if (!clientId) return { ok: false, error: 'Entity not found.' }
-
-  const [{ data: docs }, { data: imported }] = await Promise.all([
-    supabase
-      .from('documents')
-      .select('id, name, storage_path, content_type, period_year, period_month')
-      .eq('client_id', clientId)
-      .eq('doc_type', 'bank_statement')
-      .order('period_year', { ascending: true })
-      .order('period_month', { ascending: true }),
-    supabase.from('statement_imports').select('storage_path').eq('client_id', clientId),
-  ])
-  const done = new Set(
-    ((imported ?? []) as { storage_path: string | null }[]).map((r) => r.storage_path).filter(Boolean)
-  )
-  const pending = ((docs ?? []) as {
-    id: string
-    name: string | null
-    storage_path: string | null
-    content_type: string | null
-  }[]).filter((d) => d.storage_path && !done.has(d.storage_path))
-
-  if (pending.length === 0) return { ok: true, processed: 0, posted: 0, statements: [] }
-
-  const statements: ScanStatementResult[] = []
-  let posted = 0
-  for (const d of pending) {
-    const name = d.name ?? 'Statement'
-    try {
-      const parsed = await parseStatementFile(slug, d.storage_path!, name, d.content_type ?? '')
-      if (!parsed.ok) {
-        statements.push({ name, posted: 0, reconciled: null, difference: 0, type: 'bank', error: parsed.error })
-        continue
-      }
-      const stype: 'bank' | 'card' = parsed.statement.statement_type === 'card' ? 'card' : 'bank'
-      const committed = await commitStatement(slug, {
-        storagePath: d.storage_path!,
-        filename: name,
-        statementType: stype,
-        statement: parsed.statement,
-      })
-      if (!committed.ok) {
-        statements.push({ name, posted: 0, reconciled: null, difference: 0, type: stype, error: committed.error })
-        continue
-      }
-      posted += committed.inserted
-      statements.push({
-        name,
-        posted: committed.inserted,
-        reconciled: committed.hasBalances ? committed.reconciled : null,
-        difference: committed.difference,
-        type: stype,
-      })
-    } catch (e) {
-      statements.push({ name, posted: 0, reconciled: null, difference: 0, type: 'bank', error: e instanceof Error ? e.message : 'Failed to read.' })
-    }
-  }
-
-  return { ok: true, processed: pending.length, posted, statements }
-}
-
-// Import ONE already-uploaded statement (parse + commit). Same work as the batch
-// scan, but per-document so the client can drive them one at a time and show
-// live progress. Returns that statement's result.
-export async function importPendingStatement(
-  slug: string,
-  storagePath: string,
-  filename: string,
-  contentType: string
-): Promise<ScanStatementResult> {
-  try {
-    const parsed = await parseStatementFile(slug, storagePath, filename, contentType)
-    if (!parsed.ok) return { name: filename, posted: 0, reconciled: null, difference: 0, type: 'bank', error: parsed.error }
-    const stype: 'bank' | 'card' = parsed.statement.statement_type === 'card' ? 'card' : 'bank'
-    const committed = await commitStatement(slug, {
-      storagePath,
-      filename,
-      statementType: stype,
-      statement: parsed.statement,
-    })
-    if (!committed.ok) return { name: filename, posted: 0, reconciled: null, difference: 0, type: stype, error: committed.error }
-    return {
-      name: filename,
-      posted: committed.inserted,
-      reconciled: committed.hasBalances ? committed.reconciled : null,
-      difference: committed.difference,
-      type: stype,
-    }
-  } catch (e) {
-    return { name: filename, posted: 0, reconciled: null, difference: 0, type: 'bank', error: e instanceof Error ? e.message : 'Failed to read.' }
-  }
+  revalidatePath(`${entityBase(slug)}/statements`)
+  revalidatePath(entityBase(slug))
+  revalidatePath(`${entityBase(slug)}/transactions`)
+  revalidatePath(`${entityBase(slug)}/expenses`)
 }

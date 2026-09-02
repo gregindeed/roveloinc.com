@@ -10,6 +10,7 @@ import { DOCUMENT_TYPE_LABELS } from '@/lib/types'
 import { recomputeAndPersist } from '@/lib/entityStateServer'
 import { ingestExtractedFields } from '@/lib/reviewServer'
 import { logEvent } from '@/lib/registryServer'
+import { entityBase } from '@/lib/entityYear'
 import type { ParsedDoc } from '@/lib/ai'
 
 const LOG_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -95,7 +96,7 @@ export async function parseUploadedDoc(slug: string, docId: string, autofile = f
       .from('documents')
       .update({ ai_status: 'failed', ai_summary: msg.slice(0, 400) })
       .eq('id', docId)
-    revalidatePath(`/admin/clients/${slug}/compliance`)
+    revalidatePath(`${entityBase(slug)}/compliance`)
   }
 
   const media = doc.content_type || ''
@@ -153,7 +154,6 @@ export async function parseUploadedDoc(slug: string, docId: string, autofile = f
       agency: parsed.agency,
       issued_date: parsed.issue_date,
       expires_date: parsed.expires_date,
-      account_ref: parsed.account_ref,
     }
 
     if (autofile) {
@@ -194,10 +194,10 @@ export async function parseUploadedDoc(slug: string, docId: string, autofile = f
   // entity's readiness picture (document completeness, last-evidence) hands-free.
   await recomputeAndPersist(supabase, doc.client_id as string)
 
-  revalidatePath(`/admin/clients/${slug}/compliance`)
-  revalidatePath(`/admin/clients/${slug}/documents`)
+  revalidatePath(`${entityBase(slug)}/compliance`)
+  revalidatePath(`${entityBase(slug)}/documents`)
   revalidatePath(`/admin/clients/${slug}/account`)
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(entityBase(slug))
 }
 
 // Apply the AI-proposed entity fields from a document — through the same trust
@@ -210,9 +210,9 @@ export async function applyExtractedFields(slug: string, docId: string) {
   await ingestExtractedFields(supabase, doc.client_id as string, docId)
   await recomputeAndPersist(supabase, doc.client_id as string)
 
-  revalidatePath(`/admin/clients/${slug}/compliance`)
+  revalidatePath(`${entityBase(slug)}/compliance`)
   revalidatePath(`/admin/clients/${slug}/account`)
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(entityBase(slug))
 }
 
 // Relocate a document to a chosen destination (manual override of the AI's filing).
@@ -239,7 +239,7 @@ export async function moveDocument(
       .upsert({ client_id: doc.client_id, year: route.period_year }, { onConflict: 'client_id,year' })
   }
 
-  revalidatePath(`/admin/clients/${slug}/documents`)
-  revalidatePath(`/admin/clients/${slug}/compliance`)
+  revalidatePath(`${entityBase(slug)}/documents`)
+  revalidatePath(`${entityBase(slug)}/compliance`)
   revalidatePath(`/admin/clients/${slug}/account`)
 }

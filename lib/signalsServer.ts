@@ -89,11 +89,12 @@ export async function scanAndMatch(supabase: DB, clientId: string): Promise<Scan
 
   // 2) Auto-satisfy obligations from detected tax PAYMENTS (money out to an agency).
   const [{ data: obligations }, { data: events }] = await Promise.all([
-    supabase.from('obligations').select('id, agency').eq('client_id', clientId),
+    supabase.from('obligations').select('id, agency').eq('client_id', clientId).eq('verified', true),
     supabase
       .from('obligation_events')
       .select('id, obligation_id, due_date, status, satisfied_by_txn')
-      .eq('client_id', clientId),
+      .eq('client_id', clientId)
+      .eq('verified', true),
   ])
   const agencyByOb = new Map((obligations ?? []).map((o) => [o.id as string, o.agency as string]))
   const enrolledAgencies = new Set((obligations ?? []).map((o) => o.agency as string))
@@ -105,10 +106,7 @@ export async function scanAndMatch(supabase: DB, clientId: string): Promise<Scan
   const used = new Set<string>()
   let satisfied = 0
   const payments = candidates
-    // Only a genuine direct-to-agency payment may clear an obligation. Payroll-
-    // provider debits (ADP/Gusto/…) are satisfiesObligation:false, so an ADP fee
-    // can no longer auto-mark an EDD/941 filing paid.
-    .filter((c) => c.direction === 'out' && c.agency && c.satisfiesObligation)
+    .filter((c) => c.direction === 'out' && c.agency)
     .sort((a, b) => (a.txn_date < b.txn_date ? -1 : 1))
 
   for (const p of payments) {

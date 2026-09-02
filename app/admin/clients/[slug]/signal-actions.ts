@@ -7,6 +7,7 @@ import { scanAndMatch } from '@/lib/signalsServer'
 import { recomputeBySlug } from '@/lib/entityStateServer'
 import { logEvent } from '@/lib/registryServer'
 import { COMPLIANCE_PROFILE, getTemplate } from '@/lib/compliance'
+import { entityBase } from '@/lib/entityYear'
 
 async function worker() {
   const supabase = createClient()
@@ -20,11 +21,11 @@ async function worker() {
 }
 
 const back = (slug: string, key: 'ok' | 'warn', msg: string): never =>
-  redirect(`/admin/clients/${slug}/compliance?${key}=${encodeURIComponent(msg)}`)
+  redirect(`${entityBase(slug)}/compliance?${key}=${encodeURIComponent(msg)}`)
 
 const revalidate = (slug: string) => {
-  revalidatePath(`/admin/clients/${slug}/compliance`)
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(`${entityBase(slug)}/compliance`)
+  revalidatePath(entityBase(slug))
 }
 
 // Scan the entity's transactions for signals and auto-match obligations.

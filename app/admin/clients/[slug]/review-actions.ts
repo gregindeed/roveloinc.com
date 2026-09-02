@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { recomputeBySlug } from '@/lib/entityStateServer'
 import { logEvent } from '@/lib/registryServer'
 import { ENTITY_FIELD_LABELS } from '@/lib/types'
+import { entityBase } from '@/lib/entityYear'
 
 async function worker() {
   const supabase = createClient()
@@ -20,7 +21,7 @@ async function worker() {
 
 const revalidate = (slug: string) => {
   revalidatePath(`/admin/clients/${slug}/account`)
-  revalidatePath(`/admin/clients/${slug}`)
+  revalidatePath(entityBase(slug))
 }
 
 // Approve a queued extraction: write the value AND mark it verified so no later
