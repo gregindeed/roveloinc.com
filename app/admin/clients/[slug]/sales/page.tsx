@@ -40,7 +40,7 @@ export default async function SalesPage({
 
   return (
     <div className="space-y-6">
-      <PeriodBar years={[now, now - 1, now - 2, now - 3]} />
+      <PeriodBar />
       <p className="text-xs text-gray-500">
         Showing {period.label}. New rows use whatever date you enter. Sales you record here feed the client&apos;s Income
         overview and reconcile against bank deposits.

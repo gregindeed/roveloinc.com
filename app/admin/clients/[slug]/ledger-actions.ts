@@ -1,12 +1,11 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { CHART_TEMPLATES, DEFAULT_TEMPLATE_KEY } from '@/lib/coa'
 import type { AccountType } from '@/lib/coa'
 import { categorizeTransactions, type CategorizeTxn } from '@/lib/ai'
-import { entityBase } from '@/lib/entityYear'
 
 async function admin() {
   const supabase = createClient()
@@ -26,7 +25,7 @@ async function clientIdFor(supabase: Awaited<ReturnType<typeof admin>>, slug: st
 
 function revalidate(slug: string) {
   revalidatePath(`/admin/clients/${slug}/account`)
-  revalidatePath(entityBase(slug))
+  revalidatePath(`/admin/clients/${slug}`)
 }
 
 // Seed an entity's chart from a template. Idempotent: does nothing if the
@@ -52,6 +51,7 @@ export async function seedChartOfAccounts(slug: string, templateKey: string) {
     sort: i,
   }))
   await supabase.from('chart_of_accounts').insert(rows)
+  revalidateTag(`coa:${clientId}`)
   revalidate(slug)
 }
 
@@ -64,6 +64,7 @@ export async function addAccount(slug: string, formData: FormData) {
   const type = String(formData.get('type') ?? '').trim() as AccountType
   if (!code || !name || !type) return
   await supabase.from('chart_of_accounts').insert({ client_id: clientId, code, name, type, sort: 999 })
+  revalidateTag(`coa:${clientId}`)
   revalidate(slug)
 }
 
@@ -72,6 +73,8 @@ export async function renameAccount(slug: string, id: string, name: string) {
   const clean = name.trim()
   if (!clean) return
   await supabase.from('chart_of_accounts').update({ name: clean }).eq('id', id)
+  const clientId = await clientIdFor(supabase, slug)
+  if (clientId) revalidateTag(`coa:${clientId}`)
   revalidate(slug)
 }
 
@@ -80,6 +83,8 @@ export async function renameAccount(slug: string, id: string, name: string) {
 export async function setAccountActive(slug: string, id: string, active: boolean) {
   const supabase = await admin()
   await supabase.from('chart_of_accounts').update({ active }).eq('id', id)
+  const clientId = await clientIdFor(supabase, slug)
+  if (clientId) revalidateTag(`coa:${clientId}`)
   revalidate(slug)
 }
 
@@ -170,8 +175,8 @@ async function runCategorize(slug: string, tables: string[]) {
   for (const t of tables) {
     await categorizeTable(supabase, client.id as string, briefing, t)
   }
-  revalidatePath(`${entityBase(slug)}/transactions`)
-  revalidatePath(`${entityBase(slug)}/expenses`)
+  revalidatePath(`/admin/clients/${slug}/transactions`)
+  revalidatePath(`/admin/clients/${slug}/expenses`)
 }
 
 // Form actions (trailing FormData from the <form> is ignored).
@@ -183,4 +188,29 @@ export async function autoCategorizeExpenses(slug: string, _fd?: FormData) {
 }
 export async function autoCategorizeAll(slug: string) {
   await runCategorize(slug, ['deposits', 'checking_expenses', 'cc_transactions'])
+}
+
+// Fast single-row categorization for the unified Transactions list: set (or
+// clear) a row's chart-of-accounts account, routing to the right table by
+// source. Kept separate from the full-row update actions so a category change
+// can't touch the date/description/amount. accountId '' clears to uncategorized.
+export async function setTxnAccount(
+  slug: string,
+  source: 'deposit' | 'checking' | 'card',
+  id: string,
+  accountId: string | null
+) {
+  const s = await admin()
+  const table = source === 'deposit' ? 'deposits' : source === 'checking' ? 'checking_expenses' : 'cc_transactions'
+  const { error } = await s
+    .from(table)
+    .update({ account_id: accountId && accountId.trim() ? accountId : null })
+    .eq('id', id)
+  if (error) {
+    redirect(`/admin/clients/${slug}/transactions?warn=${encodeURIComponent(`Could not set category: ${error.message}`)}`)
+  }
+  revalidatePath(`/admin/clients/${slug}/transactions`)
+  revalidatePath(`/admin/clients/${slug}/expenses`)
+  revalidatePath(`/admin/clients/${slug}/reports`)
+  revalidatePath(`/admin/clients/${slug}`)
 }

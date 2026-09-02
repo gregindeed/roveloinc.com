@@ -42,7 +42,7 @@ export default async function ReconcilePage({
 
   return (
     <div className="space-y-6">
-      <PeriodBar years={[now, now - 1, now - 2, now - 3]} />
+      <PeriodBar />
       <p className="text-xs text-gray-500">Reconciling {period.label} — the sales journal against bank deposits.</p>
       <ReconcileView rec={rec} periodLabel={period.label} hasSales={s.length > 0} />
     </div>
