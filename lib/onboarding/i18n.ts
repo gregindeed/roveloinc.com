@@ -20,7 +20,9 @@ import {
 // --- UI chrome (start / review / question controls / page) -------------------
 const OB: Record<string, { en: string; es: string }> = {
   'start.label': { en: 'New account · legal name', es: 'Cuenta nueva · nombre legal' },
+  'start.labelIndividual': { en: 'New individual · legal name', es: 'Persona nueva · nombre legal' },
   'start.placeholder': { en: 'Acme Store LLC', es: 'Acme Store LLC' },
+  'start.placeholderIndividual': { en: 'Jane A. Doe', es: 'Juana A. Pérez' },
   'start.under': { en: 'Under', es: 'En' },
   'start.underWhich': { en: 'Under which firm', es: 'Bajo qué firma' },
   'start.continue': { en: 'Continue →', es: 'Continuar →' },
@@ -44,6 +46,10 @@ const OB: Record<string, { en: string; es: string }> = {
   'review.willSeed': {
     en: "I'll seed the chart of accounts, prepare the compliance schedule this profile implies, and start the Overseer's record. You can change anything afterward.",
     es: 'Prepararé el catálogo de cuentas, el calendario de cumplimiento que implica este perfil y comenzaré el registro del Overseer. Puedes cambiar cualquier cosa después.',
+  },
+  'review.willSeedIndividual': {
+    en: "I'll open their return for the tax year and start the Overseer's record. Add W-2s, 1099s, and Schedule C on the Income tab — you can change anything afterward.",
+    es: 'Abriré su declaración para el año fiscal y comenzaré el registro del Overseer. Agrega W-2, 1099 y Schedule C en la pestaña Ingresos — puedes cambiar cualquier cosa después.',
   },
   'review.create': { en: 'Create account →', es: 'Crear cuenta →' },
   'review.creating': { en: 'Creating…', es: 'Creando…' },
@@ -86,6 +92,10 @@ const STAGE_ES: Record<string, string> = {
 }
 
 const PROMPT_ES: Record<string, string> = {
+  account_kind: '¿{name} es un negocio o una persona?',
+  filing_status: '¿Cuál es el estado civil tributario de {name}?',
+  occupation: '¿A qué se dedica {name}?',
+  income_sources: '¿De dónde provienen los ingresos de {name}?',
   entity_type: '¿Qué tipo de entidad es {name}?',
   state: '¿Dónde está basada {name}?',
   formation_date: '¿Cuándo comenzó {name}?',
@@ -98,6 +108,10 @@ const PROMPT_ES: Record<string, string> = {
 }
 
 const HELP_ES: Record<string, string> = {
+  account_kind: 'Un negocio tiene libros y catálogo de cuentas. Una persona es declarante del 1040 — W-2, 1099, Schedule C.',
+  filing_status: 'Cómo presenta su 1040. Puedes cambiarlo después.',
+  occupation: 'Su ocupación o actividad principal — opcional.',
+  income_sources: 'Configura las secciones de ingresos correctas — ajústalas cuando quieras en la pestaña Ingresos.',
   state: 'Esto me indica qué agencias estatales y declaraciones aplican.',
   formation_date:
     'Fecha de constitución o del primer día de operaciones. Define los primeros períodos de declaración; déjalo en blanco si no estás seguro.',
@@ -110,6 +124,18 @@ const HELP_ES: Record<string, string> = {
 
 // Keyed by the canonical English label.
 const OPT_ES: Record<string, string> = {
+  Business: 'Negocio',
+  Individual: 'Persona',
+  Single: 'Soltero(a)',
+  'Married filing jointly': 'Casado(a) declarando en conjunto',
+  'Married filing separately': 'Casado(a) declarando por separado',
+  'Head of household': 'Jefe(a) de familia',
+  'Qualifying widow(er)': 'Viudo(a) calificado(a)',
+  'Qualifying surviving spouse': 'Cónyuge sobreviviente calificado(a)',
+  'W-2 employment': 'Empleo W-2',
+  'Self-employment': 'Trabajo por cuenta propia',
+  'Both W-2 and self-employment': 'W-2 y cuenta propia',
+  'Other / not sure': 'Otro / no estoy seguro',
   'Sole Proprietor': 'Propietario único',
   Partnership: 'Sociedad',
   LLC: 'LLC',
@@ -142,6 +168,9 @@ const OPT_ES: Record<string, string> = {
 const HINT_ES: Record<string, string> = {
   'Counted when money moves — recommended for most': 'Se cuenta cuando el dinero se mueve — recomendado para la mayoría',
   'Counted when earned / incurred': 'Se cuenta cuando se gana / se incurre',
+  'LLC, corporation, partnership — has its own books': 'LLC, corporación, sociedad — tiene sus propios libros',
+  'A person / 1040 filer': 'Una persona / declarante del 1040',
+  '1099 / Schedule C': '1099 / Schedule C',
 }
 
 export function stageLabel(locale: Locale, stage: string): string {
@@ -173,6 +202,18 @@ export function localizeQuestions(locale: Locale): Question[] {
 export function localizeSummary(locale: Locale, key: string, value: unknown): string | null {
   if (locale !== 'es') return factSummary(key, value)
   switch (key) {
+    case 'account_kind':
+      return value === 'individual' ? 'Persona' : 'Negocio'
+    case 'filing_status': {
+      const en = factSummary('filing_status', value)
+      return en ? OPT_ES[en] ?? en : null
+    }
+    case 'occupation':
+      return typeof value === 'string' && value ? value : null
+    case 'income_sources': {
+      const en = factSummary('income_sources', value)
+      return en ? OPT_ES[en] ?? en : null
+    }
     case 'entity_type': {
       const t = normalizeEntityType(value)
       const en = t ? ENTITY_TYPE_LABELS[t] : String(value)

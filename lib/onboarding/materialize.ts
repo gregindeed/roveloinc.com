@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { createAdminClient } from '@/lib/supabase/admin'
-import type { EntityType } from '@/lib/types'
+import { FILING_STATUS_LABELS, type EntityType } from '@/lib/types'
 import type { Owner } from '@/lib/onboarding/questions'
 import { CHART_TEMPLATES, DEFAULT_TEMPLATE_KEY, suggestedTemplateKey } from '@/lib/coa'
 import { getTemplate, plannedKinds, isCaliforniaState } from '@/lib/compliance'
@@ -13,6 +13,11 @@ type Admin = ReturnType<typeof createAdminClient>
 export type AccountInput = {
   orgId: string
   name: string
+  // 'individual' is a 1040 filer (no books/chart/compliance); anything else is a business.
+  kind?: 'business' | 'individual'
+  filingStatus?: string | null
+  occupation?: string | null
+  incomeSources?: string | null
   entityType: EntityType | null
   entitySubtype?: string | null
   accountingMethod: 'cash' | 'accrual'
@@ -57,9 +62,75 @@ function profileNarrative(inp: AccountInput, entityLabel: string): string {
   return bits.join(' ').slice(0, 3900)
 }
 
+function individualNarrative(inp: AccountInput): string {
+  const bits: string[] = []
+  const fs = inp.filingStatus ? FILING_STATUS_LABELS[inp.filingStatus] ?? inp.filingStatus : null
+  bits.push(`${inp.name} — individual (1040) filer${fs ? `, filing ${fs}` : ''}${inp.state ? `, based in ${inp.state}` : ''}.`)
+  if (inp.occupation) bits.push(`${inp.occupation.trim().replace(/\.?$/, '')}.`)
+  const src: Record<string, string> = {
+    w2: 'W-2 wage income',
+    self: 'self-employment income (1099 / Schedule C)',
+    both: 'both W-2 and self-employment income',
+    other: 'income to be detailed',
+  }
+  if (inp.incomeSources && src[inp.incomeSources]) bits.push(`Reports ${src[inp.incomeSources]}.`)
+  bits.push('Onboarded via the guided interview.')
+  return bits.join(' ').slice(0, 3900)
+}
+
+// Create an individual (1040 filer): a client row + first tax year, no books,
+// chart, owners, or business compliance schedule.
+async function createIndividual(admin: Admin, inp: AccountInput): Promise<{ clientId: string; slug: string } | { error: string }> {
+  const aiContext = [inp.overseerRead, inp.overseerHandling].filter(Boolean).join(' ').trim()
+  const overseerContext = (aiContext || individualNarrative(inp)).slice(0, 3900)
+
+  let slug = slugify(inp.name) || 'account'
+  let clientId = ''
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const trySlug = attempt === 0 ? slug : `${slug}-${attempt + 1}`
+    const { data, error } = await admin
+      .from('clients')
+      .insert({
+        name: inp.name,
+        slug: trySlug,
+        org_id: inp.orgId,
+        kind: 'individual',
+        filing_status: inp.filingStatus ?? null,
+        entity_type: null,
+        owner_name: inp.name,
+        state: inp.state ?? null,
+        overseer_context: overseerContext,
+      })
+      .select('id, slug')
+      .single()
+    if (!error && data) {
+      clientId = data.id as string
+      slug = data.slug as string
+      break
+    }
+    if (error && error.code !== '23505') return { error: error.message }
+    if (attempt === 4) return { error: 'Could not find a free URL for this account.' }
+  }
+
+  const firstYear = inp.taxYear && inp.taxYear >= 2000 && inp.taxYear <= 2100 ? inp.taxYear : new Date().getFullYear()
+  await admin.from('client_years').insert({ client_id: clientId, year: firstYear, status: 'active' })
+
+  await logEvent(admin as unknown as Parameters<typeof logEvent>[0], clientId, {
+    kind: 'genesis',
+    source: 'system',
+    actor: 'System',
+    title: `Welcome, ${inp.name}. This is the start of your record on Rovelo Inc.`,
+    detail: inp.overseerRead?.trim() || `Individual (1040) filer${inp.state ? ` · ${inp.state}` : ''} · onboarded via guided interview.`,
+  })
+
+  await recomputeAndPersist(admin as unknown as Parameters<typeof recomputeAndPersist>[0], clientId)
+  return { clientId, slug }
+}
+
 // Turn the confirmed onboarding facts into a real, configured account. Shared
 // creation path so the account is set up consistently however it was gathered.
 export async function createAccount(admin: Admin, inp: AccountInput): Promise<{ clientId: string; slug: string } | { error: string }> {
+  if (inp.kind === 'individual') return createIndividual(admin, inp)
   // California-only vs out-of-state. Our schedule templates are CA + federal; for
   // an out-of-state entity we drop the CA-specific flags so we never store or
   // enroll California obligations that don't apply (the Overseer's brief still

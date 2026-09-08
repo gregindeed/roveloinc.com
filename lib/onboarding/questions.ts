@@ -6,7 +6,14 @@
 // parts (option chips, free-text → fact, reactions, doc extraction), never the
 // selection itself.
 
-import { ENTITY_TYPE_LABELS, type EntityType } from '@/lib/types'
+import { ENTITY_TYPE_LABELS, FILING_STATUS_LABELS, type EntityType } from '@/lib/types'
+
+const INCOME_SOURCE_LABELS: Record<string, string> = {
+  w2: 'W-2 employment',
+  self: 'Self-employment',
+  both: 'W-2 and self-employment',
+  other: 'Other / not sure',
+}
 
 export type FactMap = Record<string, unknown>
 
@@ -52,8 +59,26 @@ const MORE_ENTITY_OPTIONS: QOption[] = [
   { value: 'other', label: 'Other', subtype: 'Other' },
 ]
 
-// V1 question set — the scoped vertical slice. Order here is the flow order.
+// Business-only vs individual-only predicates. An account is an individual (a
+// 1040 filer) when account_kind === 'individual'; everything else is a business.
+const isBiz = (f: FactMap) => f.account_kind !== 'individual'
+const isIndiv = (f: FactMap) => f.account_kind === 'individual'
+
+// V1 question set — the scoped vertical slice. Order here is the flow order;
+// nextQuestion() skips any whose appliesWhen() is false, so the business and
+// individual paths interleave into two coherent interviews.
 export const QUESTIONS: Question[] = [
+  {
+    key: 'account_kind',
+    stage: 'identity',
+    prompt: 'Is {name} a business or an individual?',
+    help: 'A business gets books and a chart of accounts. An individual is a 1040 filer — W-2, 1099, Schedule C.',
+    input: 'chips',
+    options: [
+      { value: 'business', label: 'Business', hint: 'LLC, corporation, partnership — has its own books' },
+      { value: 'individual', label: 'Individual', hint: 'A person / 1040 filer' },
+    ],
+  },
   {
     key: 'entity_type',
     stage: 'identity',
@@ -61,6 +86,22 @@ export const QUESTIONS: Question[] = [
     input: 'chips_or_text',
     options: ENTITY_OPTIONS,
     moreOptions: MORE_ENTITY_OPTIONS,
+    appliesWhen: isBiz,
+  },
+  {
+    key: 'filing_status',
+    stage: 'identity',
+    prompt: "What is {name}'s filing status?",
+    help: 'How they file their 1040. You can change it later.',
+    input: 'chips',
+    appliesWhen: isIndiv,
+    options: [
+      { value: 'single', label: 'Single' },
+      { value: 'mfj', label: 'Married filing jointly' },
+      { value: 'mfs', label: 'Married filing separately' },
+      { value: 'hoh', label: 'Head of household' },
+      { value: 'qw', label: 'Qualifying widow(er)' },
+    ],
   },
   {
     key: 'state',
@@ -82,6 +123,7 @@ export const QUESTIONS: Question[] = [
     help: 'Formation or first-day-of-business date. It sets the first filing periods — leave it blank if unsure.',
     input: 'date',
     optional: true,
+    appliesWhen: isBiz,
   },
   {
     key: 'owners',
@@ -89,6 +131,16 @@ export const QUESTIONS: Question[] = [
     prompt: 'Who owns {name}?',
     help: 'Add each owner and their ownership %. You can leave the % blank if unsure.',
     input: 'owners',
+    appliesWhen: isBiz,
+  },
+  {
+    key: 'occupation',
+    stage: 'operations',
+    prompt: 'What does {name} do for work?',
+    help: 'Their occupation or main line of work — optional.',
+    input: 'text',
+    optional: true,
+    appliesWhen: isIndiv,
   },
   {
     key: 'business_activity',
@@ -96,6 +148,21 @@ export const QUESTIONS: Question[] = [
     prompt: 'What does {name} do?',
     help: 'A short description of the business or its industry.',
     input: 'text',
+    appliesWhen: isBiz,
+  },
+  {
+    key: 'income_sources',
+    stage: 'operations',
+    prompt: "Where does {name}'s income come from?",
+    help: 'Sets up the right income sections — refine anytime on the Income tab.',
+    input: 'chips',
+    appliesWhen: isIndiv,
+    options: [
+      { value: 'w2', label: 'W-2 employment' },
+      { value: 'self', label: 'Self-employment', hint: '1099 / Schedule C' },
+      { value: 'both', label: 'Both W-2 and self-employment' },
+      { value: 'other', label: 'Other / not sure' },
+    ],
   },
   {
     key: 'has_employees',
@@ -103,6 +170,7 @@ export const QUESTIONS: Question[] = [
     prompt: 'Does {name} have employees?',
     help: 'This determines payroll and employer filings (EDD, IRS 941 / 940).',
     input: 'chips',
+    appliesWhen: isBiz,
     options: [
       { value: 'yes', label: 'Yes' },
       { value: 'no', label: 'No' },
@@ -115,6 +183,7 @@ export const QUESTIONS: Question[] = [
     stage: 'accounting',
     prompt: 'How should we keep the books?',
     input: 'chips',
+    appliesWhen: isBiz,
     options: [
       { value: 'cash', label: 'Cash', hint: 'Counted when money moves — recommended for most' },
       { value: 'accrual', label: 'Accrual', hint: 'Counted when earned / incurred' },
@@ -127,6 +196,7 @@ export const QUESTIONS: Question[] = [
     help: 'Optional — helps me plan the migration and chart of accounts.',
     input: 'chips_or_text',
     optional: true,
+    appliesWhen: isBiz,
     options: [
       { value: 'quickbooks', label: 'QuickBooks Online' },
       { value: 'xero', label: 'Xero' },
@@ -175,6 +245,14 @@ export function normalizeEntityType(v: unknown): EntityType | null {
 // A one-line human summary of a fact for the review screen.
 export function factSummary(key: string, value: unknown): string | null {
   switch (key) {
+    case 'account_kind':
+      return value === 'individual' ? 'Individual' : 'Business'
+    case 'filing_status':
+      return typeof value === 'string' && value ? FILING_STATUS_LABELS[value] ?? value : null
+    case 'occupation':
+      return typeof value === 'string' && value ? value : null
+    case 'income_sources':
+      return typeof value === 'string' && value ? INCOME_SOURCE_LABELS[value] ?? value : null
     case 'entity_type': {
       const t = normalizeEntityType(value)
       return t ? ENTITY_TYPE_LABELS[t] : String(value)
@@ -205,6 +283,10 @@ export function factSummary(key: string, value: unknown): string | null {
 }
 
 export const STAGE_LABELS: Record<string, string> = {
+  account_kind: 'Identity',
+  filing_status: 'Identity',
+  occupation: 'Operations',
+  income_sources: 'Operations',
   entity_type: 'Identity',
   entity_subtype: 'Identity',
   state: 'Identity',

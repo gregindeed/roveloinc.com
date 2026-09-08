@@ -104,6 +104,31 @@ function deterministicBrief(ctx: ReturnType<typeof buildContext>): OnboardingBri
   return { read, handling }
 }
 
+// The Overseer's read for an individual (1040 filer). The AI brief model is
+// business-oriented, so individuals get a grounded deterministic read instead.
+function individualBrief(name: string, f: Record<string, unknown>): OnboardingBrief {
+  const fs = typeof f.filing_status === 'string' && f.filing_status ? f.filing_status : null
+  const fsLabel: Record<string, string> = {
+    single: 'single',
+    mfj: 'married filing jointly',
+    mfs: 'married filing separately',
+    hoh: 'head of household',
+    qw: 'as a qualifying surviving spouse',
+  }
+  const state = typeof f.state === 'string' && f.state ? f.state : null
+  const occ = typeof f.occupation === 'string' && f.occupation ? f.occupation.trim().replace(/\.$/, '') : null
+  const read = `${name} is an individual filer${fs ? `, filing ${fsLabel[fs] ?? fs}` : ''}${state ? ` in ${state}` : ''}.${occ ? ` ${occ}.` : ''}`.replace(/\s+/g, ' ').trim()
+  const srcLine: Record<string, string> = {
+    w2: "I'll set up their W-2 wage income for the year.",
+    self: "I'll set up their self-employment income — 1099s and a Schedule C.",
+    both: "I'll set up both their W-2 wages and self-employment (1099 / Schedule C).",
+    other: "We'll detail their income together on the Income tab.",
+  }
+  const src = typeof f.income_sources === 'string' ? srcLine[f.income_sources] : ''
+  const handling = `${src || "I'll open their return and organize income as it comes in."} Add W-2s, 1099s, and Schedule C on the Income tab any time.`
+  return { read, handling }
+}
+
 // Generate (and persist) the Overseer's opening read for the review step.
 export async function brief(sessionId: string): Promise<OnboardingBrief> {
   const viewer = await requireAdmin()
@@ -120,15 +145,19 @@ export async function brief(sessionId: string): Promise<OnboardingBrief> {
   const { data: facts } = await admin.from('onboarding_facts').select('key, normalized_value').eq('session_id', sessionId)
   const f: Record<string, unknown> = {}
   for (const row of facts ?? []) f[row.key as string] = row.normalized_value
-  const ctx = buildContext(session.account_name as string, f)
 
   let out: OnboardingBrief
-  try {
-    out = await onboardingBrief(ctx, viewer.locale)
-  } catch {
-    out = deterministicBrief(ctx)
+  if (f.account_kind === 'individual') {
+    out = individualBrief(session.account_name as string, f)
+  } else {
+    const ctx = buildContext(session.account_name as string, f)
+    try {
+      out = await onboardingBrief(ctx, viewer.locale)
+    } catch {
+      out = deterministicBrief(ctx)
+    }
+    if (!out.read && !out.handling) out = deterministicBrief(ctx)
   }
-  if (!out.read && !out.handling) out = deterministicBrief(ctx)
 
   await admin
     .from('onboarding_sessions')
@@ -185,6 +214,21 @@ export async function respond(sessionId: string, message: string): Promise<Respo
   const f: Record<string, unknown> = {}
   for (const row of factRows ?? []) f[row.key as string] = row.normalized_value
 
+  // Individuals use a deterministic read (no business revise model). Acknowledge
+  // and point the operator to Back for direct edits, keeping the current read.
+  if (f.account_kind === 'individual') {
+    const b = individualBrief(session.account_name as string, f)
+    return {
+      acknowledgment:
+        viewer.locale === 'es'
+          ? 'Anotado. Usa ← Volver para ajustar cualquier respuesta directamente.'
+          : 'Noted. Use ← Back to adjust any answer directly.',
+      read: b.read,
+      handling: b.handling,
+      facts: f,
+    }
+  }
+
   const ctx = buildContext(session.account_name as string, f)
   let rev: OnboardingRevision
   try {
@@ -236,9 +280,14 @@ export async function materialize(sessionId: string): Promise<{ error: string } 
   const f: Record<string, unknown> = {}
   for (const row of facts ?? []) f[row.key as string] = row.normalized_value
 
+  const kind = f.account_kind === 'individual' ? 'individual' : 'business'
   const result = await createAccount(admin, {
     orgId: session.org_id as string,
     name: session.account_name as string,
+    kind,
+    filingStatus: typeof f.filing_status === 'string' && f.filing_status ? f.filing_status : null,
+    occupation: typeof f.occupation === 'string' && f.occupation ? f.occupation : null,
+    incomeSources: typeof f.income_sources === 'string' && f.income_sources ? f.income_sources : null,
     entityType: normalizeEntityType(f.entity_type),
     entitySubtype: typeof f.entity_subtype === 'string' && f.entity_subtype ? f.entity_subtype : null,
     accountingMethod: f.accounting_basis === 'accrual' ? 'accrual' : 'cash',

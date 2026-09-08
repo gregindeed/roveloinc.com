@@ -36,13 +36,23 @@ export default function FirmMenu({ firmId, canManage }: { firmId: string; canMan
       {open && (
         <div className="absolute right-0 mt-1 w-44 rounded-lg border border-gray-200 bg-white shadow-lg py-1 z-20 text-sm">
           <Link
-            href={`/admin/new/guided?org=${firmId}`}
+            href={`/admin/new/guided?org=${firmId}&kind=business`}
             className="flex items-center gap-2 px-3 py-1.5 text-gray-700 hover:bg-gray-50"
           >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01" />
             </svg>
-            New account
+            New business
+          </Link>
+          <Link
+            href={`/admin/new/guided?org=${firmId}&kind=individual`}
+            className="flex items-center gap-2 px-3 py-1.5 text-gray-700 hover:bg-gray-50"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="3.2" />
+              <path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
+            </svg>
+            New individual
           </Link>
           {canManage && (
             <Link href={`/admin/firms/${firmId}`} className="flex items-center gap-2 px-3 py-1.5 text-gray-700 hover:bg-gray-50">

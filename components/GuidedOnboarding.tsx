@@ -63,10 +63,14 @@ export default function GuidedOnboarding({
   firms,
   defaultOrg,
   isPlatform,
+  initialKind,
 }: {
   firms: Firm[]
   defaultOrg?: string
   isPlatform: boolean
+  // When set (e.g. "New individual" entry), the account-kind question is skipped
+  // and this kind is seeded, so the interview opens on the kind-specific path.
+  initialKind?: 'business' | 'individual'
 }) {
   const locale = useLocale()
   const questions = useMemo(() => localizeQuestions(locale), [locale])
@@ -76,7 +80,7 @@ export default function GuidedOnboarding({
   const [orgId, setOrgId] = useState(defaultOrg ?? firms.find((f) => f.is_platform)?.id ?? firms[0]?.id ?? '')
   const [name, setName] = useState('')
   const [sessionId, setSessionId] = useState('')
-  const [facts, setFacts] = useState<FactMap>({})
+  const [facts, setFacts] = useState<FactMap>(() => (initialKind ? { account_kind: initialKind } : {}))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [brief, setBrief] = useState<Brief | null>(null)
@@ -91,7 +95,15 @@ export default function GuidedOnboarding({
     return en ? questions.find((q) => q.key === en.key) ?? en : null
   }, [phase, facts, questions])
 
-  const fallbackName = locale === 'es' ? 'este negocio' : 'this business'
+  // Individual vs business copy — driven by the pre-seeded kind or the answer.
+  const isIndividual = (facts.account_kind ?? initialKind) === 'individual'
+  const fallbackName = isIndividual
+    ? locale === 'es'
+      ? 'esta persona'
+      : 'this person'
+    : locale === 'es'
+      ? 'este negocio'
+      : 'this business'
   const prompt = (q: Question) => q.prompt.replace('{name}', name || fallbackName)
 
   // The firm is fixed when onboarding was started from a firm (its menu / page):
@@ -117,9 +129,14 @@ export default function GuidedOnboarding({
     if (!name.trim()) return setError(ob(locale, 'start.needName'))
     setBusy(true)
     const r = await startSession(orgId, name)
-    setBusy(false)
-    if ('error' in r) return setError(r.error)
+    if ('error' in r) {
+      setBusy(false)
+      return setError(r.error)
+    }
     setSessionId(r.sessionId)
+    // Persist the pre-selected kind so the review + materialize see it.
+    if (initialKind) await saveAnswer(r.sessionId, 'account_kind', initialKind, initialKind)
+    setBusy(false)
     setPhase('question')
   }
 
@@ -198,13 +215,15 @@ export default function GuidedOnboarding({
       {phase === 'start' && (
         <div className="space-y-8">
           <div className="space-y-3">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-gray-400">{ob(locale, 'start.label')}</div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-gray-400">
+              {ob(locale, isIndividual ? 'start.labelIndividual' : 'start.label')}
+            </div>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && begin()}
-              placeholder={ob(locale, 'start.placeholder')}
+              placeholder={ob(locale, isIndividual ? 'start.placeholderIndividual' : 'start.placeholder')}
               className="w-full bg-transparent border-0 border-b border-gray-200 px-0 py-2 text-4xl md:text-5xl text-gray-900 placeholder:text-gray-200 focus:border-gray-900 focus:outline-none transition-colors"
               style={{ ...serif, fontWeight: 600, letterSpacing: '-0.02em' }}
             />
@@ -325,7 +344,7 @@ export default function GuidedOnboarding({
             })}
           </div>
 
-          <p className="text-xs text-gray-400">{ob(locale, 'review.willSeed')}</p>
+          <p className="text-xs text-gray-400">{ob(locale, isIndividual ? 'review.willSeedIndividual' : 'review.willSeed')}</p>
           <div className="flex items-center gap-6">
             <button onClick={create} disabled={busy} className={primary}>
               {busy ? ob(locale, 'review.creating') : ob(locale, 'review.create')}

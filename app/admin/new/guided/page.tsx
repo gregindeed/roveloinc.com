@@ -9,7 +9,7 @@ import type { Organization } from '@/lib/types'
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'New account — Rovelo Inc', robots: { index: false, follow: false } }
 
-export default async function GuidedNew({ searchParams }: { searchParams: { org?: string } }) {
+export default async function GuidedNew({ searchParams }: { searchParams: { org?: string; kind?: string } }) {
   const viewer = await requireAdmin()
   const locale = getLocale()
   const supabase = createClient()
@@ -54,6 +54,7 @@ export default async function GuidedNew({ searchParams }: { searchParams: { org?
         firms={firms.map((f) => ({ id: f.id, name: f.name, is_platform: f.is_platform }))}
         defaultOrg={searchParams.org}
         isPlatform={!!viewer.isPlatform}
+        initialKind={searchParams.kind === 'individual' ? 'individual' : searchParams.kind === 'business' ? 'business' : undefined}
       />
     </div>
   )
