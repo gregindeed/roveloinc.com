@@ -11,6 +11,7 @@ export type Viewer = {
   userId: string
   email: string | null
   displayName: string | null
+  handle: string | null
   avatarUrl: string | null
   locale: Locale
   role: Role
@@ -40,7 +41,7 @@ export const getViewer = cache(async function getViewer(): Promise<Viewer | null
   } = await supabase.auth.getUser()
   if (!user) return null
   const [{ data: p }, { data: mems }] = await Promise.all([
-    supabase.from('profiles').select('role, is_owner, client_id, org_id, display_name, avatar_url, locale').eq('id', user.id).single(),
+    supabase.from('profiles').select('role, is_owner, client_id, org_id, display_name, handle, avatar_url, locale').eq('id', user.id).single(),
     supabase.from('memberships').select('org_id, role, organizations(name, is_platform)').eq('user_id', user.id),
   ])
   const firms: FirmMembership[] = (mems ?? []).map((m) => {
@@ -51,6 +52,7 @@ export const getViewer = cache(async function getViewer(): Promise<Viewer | null
     userId: user.id,
     email: user.email ?? null,
     displayName: (p?.display_name as string | null) ?? null,
+    handle: (p?.handle as string | null) ?? null,
     avatarUrl: (p?.avatar_url as string | null) ?? null,
     locale: isLocale(p?.locale) ? p.locale : 'en',
     role: (p?.role as Role) ?? null,

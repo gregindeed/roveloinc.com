@@ -40,6 +40,14 @@ async function addManager(
       .from('memberships')
       .upsert({ user_id: existing.id, org_id: orgId, role: 'admin' }, { onConflict: 'user_id,org_id' })
     if (error) return { ok: false, error: `Could not add them to the firm: ${error.message}` }
+    // Keep the profile in step with the membership: the app's admin gates read
+    // profiles.role, so a manager whose profile still said "collaborator" (or
+    // pointed at the wrong firm) would be locked out of onboarding. A manager is
+    // a firm admin, not a portal client.
+    await admin
+      .from('profiles')
+      .update({ role: 'admin', is_owner: false, org_id: orgId, client_id: null })
+      .eq('id', existing.id)
     return { ok: true, existed: true }
   }
 

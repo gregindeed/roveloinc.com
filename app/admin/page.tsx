@@ -134,6 +134,12 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   for (const c of list) (byOrg[c.org_id ?? 'none'] ??= []).push(c)
   const firmsWithRows = firms.filter((f) => (byOrg[f.id] ?? []).length > 0)
 
+  // Entities granted to me that live in a firm I'm not a member of (cross-firm
+  // collaborator access) have no firm group to render under — surface them here
+  // so they don't silently vanish from the dashboard.
+  const shownOrgIds = new Set(firmsWithRows.map((f) => f.id))
+  const sharedRows = list.filter((c) => !c.org_id || !shownOrgIds.has(c.org_id))
+
   // Top-nav actions: New Firm is the highest-level action (platform only);
   // partner managers get a direct New Account instead.
   const navActions = (
@@ -200,6 +206,20 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
                 </div>
               )
             })}
+
+            {sharedRows.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    {t(locale, 'admin.sharedWithYou')}
+                    <span className="ml-2 text-xs font-normal text-gray-400">
+                      {t(locale, sharedRows.length === 1 ? 'admin.accountsOne' : 'admin.accountsOther', { n: sharedRows.length })}
+                    </span>
+                  </h2>
+                </div>
+                <ClientRoster rows={toRows(sharedRows)} />
+              </div>
+            )}
           </div>
         )}
 

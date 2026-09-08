@@ -62,7 +62,7 @@ export default async function AccountPage({
 
   // Owner-only: who (external collaborators) can work on this entity.
   // Managers (admin role): the portal login state for this entity.
-  let collaborators: { id: string; email: string }[] = []
+  let collaborators: { id: string; email: string; name: string; handle: string | null; avatar: string | null; firm: string }[] = []
   let portalEmail: string | null = null
   let firms: Organization[] = []
   const isManager = viewer?.role === 'admin'
@@ -83,7 +83,32 @@ export default async function AccountPage({
 
     if (viewer?.isOwner) {
       const { data: grants } = await admin.from('entity_access').select('user_id').eq('client_id', c.id)
-      collaborators = (grants ?? []).map((g) => ({ id: g.user_id, email: emailById.get(g.user_id) ?? '(unknown)' }))
+      const ids = (grants ?? []).map((g) => g.user_id as string)
+      if (ids.length) {
+        const [{ data: profs }, { data: orgList }] = await Promise.all([
+          admin.from('profiles').select('id, display_name, handle, avatar_url, org_id').in('id', ids),
+          admin.from('organizations').select('id, name'),
+        ])
+        const orgName = new Map((orgList ?? []).map((o) => [o.id as string, o.name as string]))
+        const profById = new Map(
+          (profs ?? []).map((p) => [
+            p.id as string,
+            p as { display_name: string | null; handle: string | null; avatar_url: string | null; org_id: string | null },
+          ])
+        )
+        collaborators = ids.map((id) => {
+          const p = profById.get(id)
+          const email = emailById.get(id) ?? '(unknown)'
+          return {
+            id,
+            email,
+            name: p?.display_name || email,
+            handle: p?.handle ?? null,
+            avatar: p?.avatar_url ?? null,
+            firm: (p?.org_id && orgName.get(p.org_id)) || '',
+          }
+        })
+      }
     }
 
     const { data: portalProfile } = await admin

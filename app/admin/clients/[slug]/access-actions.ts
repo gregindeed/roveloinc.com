@@ -148,7 +148,7 @@ export async function grantExistingCollaborator(slug: string, userId: string) {
 export async function searchAddableUsers(
   slug: string,
   query: string
-): Promise<{ id: string; name: string; email: string; firm: string }[]> {
+): Promise<{ id: string; name: string; handle: string | null; avatar: string | null; email: string; firm: string }[]> {
   const viewer = await requireOwner()
   const q = query.trim().toLowerCase()
   if (q.length < 2) return []
@@ -156,12 +156,12 @@ export async function searchAddableUsers(
   const admin = createAdminClient()
 
   // Candidate profiles, scoped by who's asking.
-  type Prof = { id: string; display_name: string | null; org_id: string | null; role: string }
+  type Prof = { id: string; display_name: string | null; handle: string | null; avatar_url: string | null; org_id: string | null; role: string }
   let profs: Prof[] = []
   if (viewer.isPlatform) {
     const { data } = await admin
       .from('profiles')
-      .select('id, display_name, org_id, role')
+      .select('id, display_name, handle, avatar_url, org_id, role')
       .in('role', ['admin', 'collaborator'])
     profs = (data ?? []) as Prof[]
   } else {
@@ -179,7 +179,7 @@ export async function searchAddableUsers(
     }
     const ids = Array.from(new Set([...(mems ?? []).map((m) => m.user_id as string), ...grantIds]))
     if (ids.length === 0) return []
-    const { data } = await admin.from('profiles').select('id, display_name, org_id, role').in('id', ids)
+    const { data } = await admin.from('profiles').select('id, display_name, handle, avatar_url, org_id, role').in('id', ids)
     profs = (data ?? []) as Prof[]
   }
 
@@ -196,16 +196,75 @@ export async function searchAddableUsers(
     for (const r of g ?? []) granted.add(r.user_id as string)
   }
 
-  const out: { id: string; name: string; email: string; firm: string }[] = []
+  const out: { id: string; name: string; handle: string | null; avatar: string | null; email: string; firm: string }[] = []
   for (const p of profs) {
     if (p.id === viewer.userId || granted.has(p.id)) continue
     const email = emails.get(p.id) ?? ''
     const name = p.display_name || email || '(no name)'
-    if (!name.toLowerCase().includes(q) && !email.toLowerCase().includes(q)) continue
-    out.push({ id: p.id, name, email: email ? maskEmail(email) : '', firm: (p.org_id && orgName.get(p.org_id)) || '' })
+    const handle = p.handle ?? null
+    if (
+      !name.toLowerCase().includes(q) &&
+      !email.toLowerCase().includes(q) &&
+      !(handle && handle.toLowerCase().includes(q))
+    )
+      continue
+    out.push({
+      id: p.id,
+      name,
+      handle,
+      avatar: p.avatar_url ?? null,
+      email: email ? maskEmail(email) : '',
+      firm: (p.org_id && orgName.get(p.org_id)) || '',
+    })
     if (out.length >= 8) break
   }
   return out
+}
+
+// Re-send a collaborator their access email. If they never set a password we
+// send a fresh set-password invite; if they already have a login we re-send the
+// "you have access" notice with a link into the entity.
+export async function resendCollaboratorInvite(slug: string, userId: string) {
+  await requireOwner()
+  const admin = createAdminClient()
+  const { data: client } = await admin.from('clients').select('id, name').eq('slug', slug).single()
+  if (!client) back(slug, 'warn', 'Entity not found.')
+
+  const { data: u } = await admin.auth.admin.getUserById(userId)
+  const email = u?.user?.email ?? ''
+  if (!email) back(slug, 'warn', 'No email on file for this collaborator.')
+
+  const base = siteUrl()
+  const neverSignedIn = !u?.user?.last_sign_in_at
+
+  try {
+    if (neverSignedIn) {
+      const { data: link, error } = await admin.auth.admin.generateLink({
+        type: 'invite',
+        email,
+        options: { redirectTo: `${base}/auth/confirm` },
+      })
+      if (error || !link?.properties?.hashed_token) {
+        back(slug, 'warn', `Could not create a link: ${error?.message ?? 'unknown error'}`)
+      }
+      const setupUrl = `${base}/auth/confirm?token_hash=${link!.properties!.hashed_token}&type=invite&next=/set-password`
+      await sendEmail({
+        to: email,
+        subject: 'You’ve been added to Rovelo Inc',
+        html: teamInviteEmailHtml('Collaborator', `You have access to ${client!.name}.`, setupUrl),
+      })
+    } else {
+      await sendEmail({
+        to: email,
+        subject: `You've been given access to ${client!.name}`,
+        html: accessGrantedEmailHtml(client!.name, `${base}/admin/clients/${slug}`),
+      })
+    }
+  } catch (e) {
+    back(slug, 'warn', `Could not send the email: ${e instanceof Error ? e.message : 'unknown error'}`)
+  }
+
+  back(slug, 'ok', `Invite re-sent to ${email}.`)
 }
 
 // Remove a collaborator's access to THIS entity (their other grants are untouched).

@@ -41,7 +41,13 @@ export default async function ProfileSettings({ searchParams }: { searchParams: 
           </div>
         )}
 
-        <ProfileForm email={viewer.email} initialName={viewer.displayName} avatarUrl={viewer.avatarUrl} />
+        <ProfileForm
+          userId={viewer.userId}
+          email={viewer.email}
+          initialName={viewer.displayName}
+          initialHandle={viewer.handle}
+          avatarUrl={viewer.avatarUrl}
+        />
       </main>
     </div>
   )
