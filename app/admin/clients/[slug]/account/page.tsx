@@ -15,6 +15,7 @@ import PortalAccessPanel from '@/components/PortalAccessPanel'
 import LifecyclePanel from '@/components/LifecyclePanel'
 import ReviewQueue from '@/components/ReviewQueue'
 import RelationshipsPanel from '@/components/RelationshipsPanel'
+import TaxProfilePanel from '@/components/TaxProfilePanel'
 import SettingsShell from '@/components/SettingsShell'
 import { getViewer } from '@/lib/auth'
 import { PERMANENT_FOLDER } from '@/lib/folders'
@@ -388,6 +389,23 @@ export default async function AccountPage({
                       slug={c.slug}
                       clientKind={c.kind ?? 'business'}
                       relationships={relationships}
+                    />
+                  ),
+                },
+              ]
+            : []),
+          ...(c.kind === 'individual' && (isManager || viewer?.isOwner)
+            ? [
+                {
+                  key: 'tax_profile',
+                  label: 'Tax profile',
+                  content: (
+                    <TaxProfilePanel
+                      slug={c.slug}
+                      residency={c.residency ?? null}
+                      taxIdType={c.tax_id_type ?? null}
+                      treatyCountry={c.treaty_country ?? null}
+                      treatyDividendRate={c.treaty_dividend_rate ?? null}
                     />
                   ),
                 },

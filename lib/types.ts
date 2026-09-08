@@ -30,6 +30,11 @@ export type Client = {
   filing_status?: string | null
   // Home / residency state (2-letter or name) — set at onboarding; drives state tax.
   state?: string | null
+  // Individual tax profile (foreign / nonresident owners).
+  residency?: 'resident' | 'nonresident' | null // null → treated as resident
+  tax_id_type?: 'ssn' | 'itin' | null
+  treaty_country?: string | null
+  treaty_dividend_rate?: number | null // e.g. 0.10 for the US–Mexico 10% dividend rate
   ein: string | null
   ca_sos_number: string | null
   cdtfa_account: string | null

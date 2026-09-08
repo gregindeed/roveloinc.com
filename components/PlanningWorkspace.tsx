@@ -84,13 +84,17 @@ const HEALTH_DOT: Record<HealthStatus, string> = {
   risk: 'bg-red-500',
 }
 
+type Scenario = { key: string; label: string; totalTax: number; current: boolean }
+
 export default function PlanningWorkspace({
   position,
   caTax,
   plan,
   health,
   narrative,
+  scenarios,
   otherIncome,
+  dividends,
   scheduleCNet,
   w2Wages,
 }: {
@@ -99,11 +103,14 @@ export default function PlanningWorkspace({
   plan: PlanMove[]
   health: FinancialHealth
   narrative: string
+  scenarios: Scenario[]
   otherIncome: number
+  dividends: number
   scheduleCNet: number
   w2Wages: number
 }) {
   const p = position
+  const isNR = p.residency === 'nonresident'
   const owes = p.balance >= 0
   const barTotal = p.taxableIncome + (p.roomToNextBracket ?? 0)
   const totalSavings = plan.reduce((a, m) => a + (m.estSavings ?? 0), 0)
@@ -112,14 +119,20 @@ export default function PlanningWorkspace({
   // Combined federal + CA figures for the headline tiles.
   const combinedTax = p.totalTax + (caTax?.tax ?? 0)
   const combinedEffective = p.totalIncome > 0 ? combinedTax / p.totalIncome : 0
+  const bestScenario = scenarios.length ? scenarios.reduce((b, s) => (s.totalTax < b.totalTax ? s : b)) : null
 
   return (
     <div className="space-y-6">
       {/* Estimate banner */}
       <div className="rounded-lg border border-blue-100 bg-blue-50 px-3.5 py-2.5 text-xs text-blue-800">
-        {caTax ? 'Federal + California' : 'Federal'} estimate for {p.year}
-        {!p.exactYear && <span> (nearest year we have tables for)</span>} · filing {FILING_STATUS_SHORT[p.filingStatus]} ·
-        standard deduction · simplified self-employment tax{p.qbiDeduction > 0 ? ' and QBI' : ''}. A planning figure, not a filed return.
+        {isNR ? 'Nonresident (1040-NR)' : caTax ? 'Federal + California' : 'Federal'} estimate for {p.year}
+        {!p.exactYear && <span> (nearest year we have tables for)</span>} · filing {FILING_STATUS_SHORT[p.filingStatus]}
+        {isNR ? (
+          <> · no standard deduction · dividends at {p.dividendRate != null ? `${Math.round(p.dividendRate * 100)}%` : '30%'}</>
+        ) : (
+          <> · standard deduction{p.qbiDeduction > 0 ? ' · QBI' : ''}{p.qualifiedDividends > 0 ? ' · qualified dividends' : ''}</>
+        )}
+        . A planning figure, not a filed return.
       </div>
 
       {/* The Overseer's read */}
@@ -136,11 +149,19 @@ export default function PlanningWorkspace({
           sub={caTax ? `Federal ${usd(p.totalTax)} + CA ${usd(caTax.tax)}` : `Income ${usd(p.incomeTax)} + SE ${usd(p.seTax)}`}
         />
         <Tile label="Effective rate" value={pct(combinedEffective)} sub={caTax ? 'federal + CA' : 'of total income'} />
-        <Tile
-          label="Marginal bracket"
-          value={caTax ? `${pctInt(p.marginalRate)} + ${pctInt(caTax.marginalRate)}` : pctInt(p.marginalRate)}
-          sub={caTax ? 'federal + CA' : p.bracketTop != null ? `top at ${usd(p.bracketTop)}` : 'top bracket'}
-        />
+        {isNR ? (
+          <Tile
+            label="Dividend rate"
+            value={p.dividendRate != null ? pctInt(p.dividendRate) : '30%'}
+            sub={p.dividendRate != null && p.dividendRate < 0.3 ? 'treaty rate' : 'statutory FDAP'}
+          />
+        ) : (
+          <Tile
+            label="Marginal bracket"
+            value={caTax ? `${pctInt(p.marginalRate)} + ${pctInt(caTax.marginalRate)}` : pctInt(p.marginalRate)}
+            sub={caTax ? 'federal + CA' : p.bracketTop != null ? `top at ${usd(p.bracketTop)}` : 'top bracket'}
+          />
+        )}
         <Tile
           label={owes ? 'Federal balance due' : 'Federal refund'}
           value={usd(Math.abs(p.balance))}
@@ -176,6 +197,44 @@ export default function PlanningWorkspace({
         </div>
       </div>
 
+      {/* Filing-basis comparison — the "best option" for a foreign owner */}
+      {scenarios.length > 1 && (
+        <div className="rounded-xl border border-gray-200 p-5">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Filing basis · federal tax on {usd(dividends)} of dividends</h2>
+            {bestScenario && <span className="text-xs text-gray-500">Lowest: <span className="font-semibold text-emerald-600">{bestScenario.label}</span></span>}
+          </div>
+          <p className="text-xs text-gray-500 mt-0.5 mb-3">
+            Residency is a facts test (substantial presence / green card), not a free choice — but it drives the number. This
+            compares the same income under each basis.
+          </p>
+          <div className="space-y-2">
+            {scenarios.map((s) => {
+              const isBest = bestScenario?.key === s.key
+              return (
+                <div
+                  key={s.key}
+                  className={`flex items-center justify-between rounded-lg border px-3.5 py-2.5 ${
+                    s.current ? 'border-gray-900 bg-gray-50' : 'border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium text-gray-900">{s.label}</span>
+                    {s.current && <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">current</span>}
+                    {isBest && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">lowest</span>}
+                  </div>
+                  <span className="text-sm font-semibold tabular-nums text-gray-900">{usd(s.totalTax)}</span>
+                </div>
+              )
+            })}
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2">
+            Set the basis and treaty rate under <span className="font-medium">Entity settings → Tax profile</span>. Estimate only —
+            confirm residency and the treaty article before filing.
+          </p>
+        </div>
+      )}
+
       {/* The plan — ranked moves */}
       {plan.length > 0 && (
         <div className="space-y-3">
@@ -200,7 +259,8 @@ export default function PlanningWorkspace({
         </div>
       )}
 
-      {/* Planning read */}
+      {/* Planning read (resident ordinary-bracket framing) */}
+      {!isNR && (
       <div className="rounded-xl border border-gray-200 p-5 space-y-1.5">
         <p className="text-sm text-gray-800">
           {p.taxableIncome > 0 ? (
@@ -232,6 +292,7 @@ export default function PlanningWorkspace({
           </p>
         )}
       </div>
+      )}
 
       {/* Bracket fill visualization */}
       {p.slices.length > 0 && (
@@ -268,26 +329,46 @@ export default function PlanningWorkspace({
       {/* Line-by-line breakdown */}
       <div className="rounded-xl border border-gray-200 overflow-hidden">
         <h2 className="text-sm font-semibold text-gray-900 px-4 pt-4 pb-1">How the estimate is built</h2>
-        <div className="divide-y divide-gray-100">
-          <Line label="W-2 wages" value={usd(w2Wages)} />
-          <Line label="1099 income" value={usd(otherIncome)} note="treated as ordinary income" />
-          <Line label="Schedule C net" value={usd(scheduleCNet)} negative={scheduleCNet < 0} />
-          <Line label="Total income" value={usd(p.totalIncome)} strong />
-          {p.seTaxDeduction > 0 && <Line label="Less: ½ self-employment tax" value={`(${usd(p.seTaxDeduction)})`} negative />}
-          <Line label="Adjusted gross income (AGI)" value={usd(p.agi)} strong />
-          <Line label="Less: standard deduction" value={`(${usd(p.standardDeduction)})`} negative />
-          {p.qbiDeduction > 0 && <Line label="Less: QBI deduction (est.)" value={`(${usd(p.qbiDeduction)})`} note="20% of qualified business income" negative />}
-          <Line label="Taxable income" value={usd(p.taxableIncome)} strong />
-          <Line label="Federal income tax" value={usd(p.incomeTax)} />
-          {p.seTax > 0 && <Line label="Self-employment tax" value={usd(p.seTax)} />}
-          <Line label="Total federal tax" value={usd(p.totalTax)} strong />
-          <Line label="Less: federal withholding" value={`(${usd(p.withholding)})`} negative />
-          <Line
-            label={owes ? 'Estimated balance due' : 'Estimated refund'}
-            value={usd(Math.abs(p.balance))}
-            strong
-          />
-        </div>
+        {isNR ? (
+          <div className="divide-y divide-gray-100">
+            {w2Wages > 0 && <Line label="W-2 wages (effectively connected)" value={usd(w2Wages)} />}
+            {otherIncome !== 0 && <Line label="Other US income" value={usd(otherIncome)} />}
+            {scheduleCNet !== 0 && <Line label="Schedule C net" value={usd(scheduleCNet)} negative={scheduleCNet < 0} />}
+            {w2Wages + otherIncome + Math.max(0, scheduleCNet) > 0 && (
+              <>
+                <Line label="Graduated tax on US income" value={usd(p.incomeTax)} note="1040-NR, no standard deduction" />
+              </>
+            )}
+            <Line label="US-source dividends (FDAP)" value={usd(dividends)} strong />
+            <Line
+              label={`Dividend tax @ ${p.dividendRate != null ? pctInt(p.dividendRate) : '30%'}`}
+              value={usd(p.dividendTax)}
+              note={p.dividendRate != null && p.dividendRate < 0.3 ? 'reduced treaty rate' : 'statutory flat rate'}
+            />
+            <Line label="Total federal tax" value={usd(p.totalTax)} strong />
+            <Line label="Less: federal withholding" value={`(${usd(p.withholding)})`} negative />
+            <Line label={owes ? 'Estimated balance due' : 'Estimated refund'} value={usd(Math.abs(p.balance))} strong />
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {w2Wages > 0 && <Line label="W-2 wages" value={usd(w2Wages)} />}
+            {otherIncome !== 0 && <Line label="1099 income" value={usd(otherIncome)} note="ordinary income" />}
+            {scheduleCNet !== 0 && <Line label="Schedule C net" value={usd(scheduleCNet)} negative={scheduleCNet < 0} />}
+            {dividends > 0 && <Line label="Qualified dividends" value={usd(dividends)} note="taxed at capital-gains rates" />}
+            <Line label="Total income" value={usd(p.totalIncome)} strong />
+            {p.seTaxDeduction > 0 && <Line label="Less: ½ self-employment tax" value={`(${usd(p.seTaxDeduction)})`} negative />}
+            <Line label="Adjusted gross income (AGI)" value={usd(p.agi)} strong />
+            <Line label="Less: standard deduction" value={`(${usd(p.standardDeduction)})`} negative />
+            {p.qbiDeduction > 0 && <Line label="Less: QBI deduction (est.)" value={`(${usd(p.qbiDeduction)})`} note="20% of qualified business income" negative />}
+            <Line label="Taxable income" value={usd(p.taxableIncome)} strong />
+            <Line label="Ordinary income tax" value={usd(p.incomeTax - p.dividendTax)} />
+            {p.dividendTax > 0 && <Line label="Tax on qualified dividends" value={usd(p.dividendTax)} note="0/15/20% cap-gains rates" />}
+            {p.seTax > 0 && <Line label="Self-employment tax" value={usd(p.seTax)} />}
+            <Line label="Total federal tax" value={usd(p.totalTax)} strong />
+            <Line label="Less: federal withholding" value={`(${usd(p.withholding)})`} negative />
+            <Line label={owes ? 'Estimated balance due' : 'Estimated refund'} value={usd(Math.abs(p.balance))} strong />
+          </div>
+        )}
       </div>
 
       {/* California breakdown */}
@@ -307,10 +388,21 @@ export default function PlanningWorkspace({
       )}
 
       <p className="text-xs text-gray-400">
-        Estimate only — {caTax ? 'federal and California' : 'federal'}, standard deduction, ordinary rates. It doesn&apos;t model
-        itemized deductions, credits{caTax ? ' (including CA exemption credits)' : ''}, capital-gains rates, the additional Medicare
-        tax{caTax ? '' : ', or state tax'}. State withholding isn&apos;t tracked yet, so the refund/owe figure is federal only. Use it
-        to plan, not to file.
+        {isNR ? (
+          <>
+            Estimate only — Form 1040-NR treatment: no standard deduction, effectively-connected income at graduated rates, and
+            US-source dividends as FDAP at the treaty or 30% rate. It doesn&apos;t model state tax, the §871(d) net-rental election,
+            or credits, and residency (substantial presence / green card) and the exact treaty article must be confirmed before
+            filing. A planning figure, not a filed return.
+          </>
+        ) : (
+          <>
+            Estimate only — {caTax ? 'federal and California' : 'federal'}, standard deduction, ordinary and capital-gains rates.
+            It doesn&apos;t model itemized deductions, credits{caTax ? ' (including CA exemption credits)' : ''}, the additional
+            Medicare/NIIT{caTax ? '' : ', or state tax'}. State withholding isn&apos;t tracked yet, so the refund/owe figure is
+            federal only. Use it to plan, not to file.
+          </>
+        )}
       </p>
     </div>
   )

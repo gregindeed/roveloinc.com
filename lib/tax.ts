@@ -1,16 +1,18 @@
 // ── Federal individual tax estimate (Phase 4, tax-position-first) ────────────
 // A grounded ESTIMATE of an individual's federal position for a tax year, built
-// from the structured income we capture (W-2 wages, 1099s, Schedule C net).
-// Federal only for now — CA state layers on later. Standard deduction only
-// (no itemized), simplified self-employment tax and QBI. Every figure the UI
-// shows is labeled an estimate; this is a planning tool, not a filed return.
-//
-// Bracket, standard-deduction, and Social Security wage-base figures are the
-// official IRS amounts for each year (verified against Tax Foundation / IRS):
-//   2024, 2025, 2026. Married-filing-separately brackets are exactly half of
-//   married-filing-jointly; qualifying surviving spouse uses the MFJ tables.
+// from the structured income we capture (W-2 wages, 1099s, Schedule C net,
+// dividends). Two bases are modeled:
+//   • Resident (Form 1040): standard deduction, ordinary brackets, qualified
+//     dividends at 0/15/20% capital-gains rates, self-employment tax, QBI.
+//   • Nonresident (Form 1040-NR): no standard deduction, no QBI, no SE tax;
+//     effectively-connected income at graduated rates; US-source dividends
+//     (FDAP) taxed at a flat 30% or a lower tax-treaty rate.
+// Every figure the UI shows is labeled an estimate — a planning tool, not a
+// filed return. Bracket, deduction, wage-base, and capital-gains figures are the
+// official IRS amounts for 2024, 2025, 2026 (verified against IRS / Tax Foundation).
 
 export type FilingStatus = 'single' | 'mfj' | 'mfs' | 'hoh' | 'qw'
+export type Residency = 'resident' | 'nonresident'
 
 export type Bracket = { upTo: number; rate: number } // upTo = top of this bracket (Infinity for the last)
 
@@ -24,7 +26,6 @@ type YearTable = {
 
 const INF = Infinity
 
-// Halve every MFJ threshold to get the MFS brackets (current-law relationship).
 const halve = (b: Bracket[]): Bracket[] => b.map((x) => ({ upTo: x.upTo === INF ? INF : x.upTo / 2, rate: x.rate }))
 
 const YEARS: Record<number, YearTable> = {
@@ -78,17 +79,34 @@ const YEARS: Record<number, YearTable> = {
   },
 }
 
+// Long-term capital-gains / qualified-dividend breakpoints (by taxable income).
+// upTo = top of the 0% and 15% bands; the remainder is 20%.
+const LTCG: Record<number, { single: Bracket[]; mfj: Bracket[]; hoh: Bracket[] }> = {
+  2024: {
+    single: [{ upTo: 47025, rate: 0 }, { upTo: 518900, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+    mfj: [{ upTo: 94050, rate: 0 }, { upTo: 583750, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+    hoh: [{ upTo: 63000, rate: 0 }, { upTo: 551350, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+  },
+  2025: {
+    single: [{ upTo: 48350, rate: 0 }, { upTo: 533400, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+    mfj: [{ upTo: 96700, rate: 0 }, { upTo: 600050, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+    hoh: [{ upTo: 64750, rate: 0 }, { upTo: 566700, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+  },
+  2026: {
+    single: [{ upTo: 49450, rate: 0 }, { upTo: 545500, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+    mfj: [{ upTo: 98900, rate: 0 }, { upTo: 613700, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+    hoh: [{ upTo: 66200, rate: 0 }, { upTo: 579600, rate: 0.15 }, { upTo: INF, rate: 0.2 }],
+  },
+}
+
 const SUPPORTED_YEARS = Object.keys(YEARS).map(Number).sort((a, b) => a - b)
 
-// Resolve a year to its table, clamping to the nearest supported year and
-// reporting whether the requested year was covered exactly.
 function resolveYear(year: number): { year: number; table: YearTable; exact: boolean } {
   if (YEARS[year]) return { year, table: YEARS[year], exact: true }
   const nearest = SUPPORTED_YEARS.reduce((best, y) => (Math.abs(y - year) < Math.abs(best - year) ? y : best), SUPPORTED_YEARS[0])
   return { year: nearest, table: YEARS[nearest], exact: false }
 }
 
-// The bracket set for a filing status (MFS = half MFJ; QW = MFJ).
 function bracketsFor(table: YearTable, fs: FilingStatus): Bracket[] {
   switch (fs) {
     case 'single': return table.single
@@ -99,21 +117,38 @@ function bracketsFor(table: YearTable, fs: FilingStatus): Bracket[] {
   }
 }
 
-const SE_NET_FACTOR = 0.9235 // net earnings from self-employment = Schedule C net × 92.35%
-const SS_RATE = 0.124 // Social Security portion of SE tax
-const MEDICARE_RATE = 0.029 // Medicare portion of SE tax (no cap)
+function ltcgFor(year: number, fs: FilingStatus): Bracket[] {
+  const y = YEARS[year] ? year : resolveYear(year).year
+  const set = LTCG[y]
+  switch (fs) {
+    case 'single': return set.single
+    case 'hoh': return set.hoh
+    case 'mfj':
+    case 'qw': return set.mfj
+    case 'mfs': return [{ upTo: set.single[0].upTo, rate: 0 }, { upTo: set.mfj[1].upTo / 2, rate: 0.15 }, { upTo: INF, rate: 0.2 }]
+  }
+}
+
+const SE_NET_FACTOR = 0.9235
+const SS_RATE = 0.124
+const MEDICARE_RATE = 0.029
+const NR_DEFAULT_FDAP_RATE = 0.3 // flat 30% on US-source FDAP when no treaty is claimed
 
 export type TaxPositionInput = {
   year: number
   filingStatus: FilingStatus
-  w2Wages: number // Box 1 total
-  w2SsWages: number // Box 3 total — reduces the SS base available for SE tax
-  otherIncome: number // 1099 income treated as ordinary (estimate)
-  scheduleCNet: number // net profit across Schedule C businesses
-  withholding: number // W-2 Box 2 + 1099 federal withholding
-  // Above-the-line adjustments beyond the ½ SE-tax deduction — e.g. modeling a
-  // pre-tax retirement contribution or HSA. Reduces AGI. Used by the planner.
+  w2Wages: number
+  w2SsWages: number
+  otherIncome: number // ordinary 1099 income (dividends handled separately)
+  scheduleCNet: number
+  qualifiedDividends?: number // 1099-DIV — qualified dividends (e.g. C-corp distributions)
+  withholding: number
   preTaxAdjustments?: number
+  // Residency basis. 'nonresident' switches to 1040-NR treatment.
+  residency?: Residency
+  // For nonresidents: flat rate on US-source dividends (treaty rate, e.g. 0.10).
+  // Null/undefined → the statutory 30%.
+  treatyDividendRate?: number | null
 }
 
 export type BracketSlice = { rate: number; amount: number; tax: number }
@@ -122,28 +157,31 @@ export type TaxPosition = {
   year: number
   exactYear: boolean
   filingStatus: FilingStatus
+  residency: Residency
   totalIncome: number
+  qualifiedDividends: number
+  dividendTax: number
+  dividendRate: number | null // the flat rate applied to NR dividends (null for resident)
   seTax: number
-  seTaxDeduction: number // half of SE tax, above-the-line
+  seTaxDeduction: number
   agi: number
   standardDeduction: number
   qbiDeduction: number
-  qbiEstimated: boolean // false when income is above the simple-case threshold
+  qbiEstimated: boolean
   taxableIncome: number
-  incomeTax: number
-  totalTax: number // income tax + SE tax
+  incomeTax: number // ordinary income tax (excludes SE and the dividend tax)
+  totalTax: number
   withholding: number
-  balance: number // >0 = owe, <0 = refund
+  balance: number
   marginalRate: number
-  effectiveRate: number // total tax / total income
-  slices: BracketSlice[] // taxable income split across the brackets it fills
-  bracketTop: number | null // top of the current marginal bracket (null if top bracket)
-  roomToNextBracket: number | null // taxable-income headroom before the next rate
+  effectiveRate: number
+  slices: BracketSlice[]
+  bracketTop: number | null
+  roomToNextBracket: number | null
 }
 
 const round = (n: number) => Math.round(n)
 
-// Progressive tax on an amount given a bracket set; also returns the per-bracket slices.
 function taxOn(amount: number, brackets: Bracket[]): { tax: number; slices: BracketSlice[] } {
   let tax = 0
   let last = 0
@@ -163,15 +201,81 @@ function taxOn(amount: number, brackets: Bracket[]): { tax: number; slices: Brac
   return { tax, slices }
 }
 
+// Tax on a qualified-dividend / LTCG amount that stacks ON TOP of `base`
+// (ordinary taxable income), split across the 0/15/20 bands.
+function stackedGainsTax(base: number, gain: number, br: Bracket[]): number {
+  if (gain <= 0) return 0
+  let tax = 0
+  let prevTop = 0
+  const lo = base
+  const hi = base + gain
+  for (const b of br) {
+    const overlapLo = Math.max(lo, prevTop)
+    const overlapHi = Math.min(hi, b.upTo)
+    if (overlapHi > overlapLo) tax += (overlapHi - overlapLo) * b.rate
+    prevTop = b.upTo
+    if (hi <= b.upTo) break
+  }
+  return tax
+}
+
+function marginalBand(taxable: number, brackets: Bracket[]): { rate: number; top: number | null } {
+  let rate = brackets[0].rate
+  let top: number | null = null
+  let last = 0
+  for (const b of brackets) {
+    if (taxable > last) {
+      rate = b.rate
+      top = b.upTo === INF ? null : b.upTo
+    }
+    last = b.upTo
+  }
+  return { rate, top }
+}
+
 export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
   const { table, year, exact } = resolveYear(inp.year)
   const brackets = bracketsFor(table, inp.filingStatus)
-
+  const residency: Residency = inp.residency === 'nonresident' ? 'nonresident' : 'resident'
+  const qualDiv = Math.max(0, inp.qualifiedDividends ?? 0)
   const scheduleCNet = Math.max(0, inp.scheduleCNet)
-  const totalIncome = inp.w2Wages + inp.otherIncome + inp.scheduleCNet
+  const preTax = inp.preTaxAdjustments ?? 0
+  const totalIncome = inp.w2Wages + inp.otherIncome + inp.scheduleCNet + qualDiv
 
-  // Self-employment tax on Schedule C net (simplified — ignores the 0.9% extra
-  // Medicare surtax). W-2 Social Security wages consume the SS base first.
+  // ── Nonresident alien — Form 1040-NR ───────────────────────────────────────
+  if (residency === 'nonresident') {
+    // Effectively-connected income taxed at graduated rates, no standard
+    // deduction and no QBI. Nonresident aliens aren't subject to SE tax.
+    const eci = Math.max(0, inp.w2Wages + inp.otherIncome + inp.scheduleCNet - preTax)
+    const { tax: eciTax, slices } = taxOn(eci, brackets)
+    const dividendRate = inp.treatyDividendRate != null ? inp.treatyDividendRate : NR_DEFAULT_FDAP_RATE
+    const dividendTax = qualDiv * dividendRate
+    const totalTax = eciTax + dividendTax
+    const mb = marginalBand(eci, brackets)
+    return {
+      year, exactYear: exact, filingStatus: inp.filingStatus, residency,
+      totalIncome: round(totalIncome),
+      qualifiedDividends: round(qualDiv),
+      dividendTax: round(dividendTax),
+      dividendRate,
+      seTax: 0, seTaxDeduction: 0,
+      agi: round(eci + qualDiv),
+      standardDeduction: 0,
+      qbiDeduction: 0, qbiEstimated: true,
+      taxableIncome: round(eci + qualDiv),
+      incomeTax: round(eciTax),
+      totalTax: round(totalTax),
+      withholding: round(inp.withholding),
+      balance: round(totalTax - inp.withholding),
+      marginalRate: eci > 0 ? mb.rate : dividendRate,
+      effectiveRate: totalIncome > 0 ? totalTax / totalIncome : 0,
+      slices: slices.map((s) => ({ rate: s.rate, amount: round(s.amount), tax: round(s.tax) })),
+      bracketTop: eci > 0 ? mb.top : null,
+      roomToNextBracket: eci > 0 && mb.top != null ? round(Math.max(0, mb.top - eci)) : null,
+    }
+  }
+
+  // ── Resident — Form 1040 ────────────────────────────────────────────────────
   const seBase = scheduleCNet * SE_NET_FACTOR
   const ssAvailable = Math.max(0, table.ssWageBase - inp.w2SsWages)
   const seSS = Math.min(seBase, ssAvailable) * SS_RATE
@@ -179,14 +283,11 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
   const seTax = seBase > 0 ? seSS + seMedicare : 0
   const seTaxDeduction = seTax * 0.5
 
-  const agi = Math.max(0, totalIncome - seTaxDeduction - (inp.preTaxAdjustments ?? 0))
+  const agi = Math.max(0, totalIncome - seTaxDeduction - preTax)
   const standardDeduction = table.stdDeduction[inp.filingStatus]
   const taxableBeforeQbi = Math.max(0, agi - standardDeduction)
 
-  // Simplified §199A QBI deduction: 20% of Schedule C QBI (net of the ½ SE-tax
-  // deduction), capped at 20% of taxable income. Only estimated below the top of
-  // the 24% bracket, where the W-2/UBIA limits and SSTB phase-outs don't apply.
-  const qbiThreshold = brackets[3]?.upTo ?? INF // top of the 24% band
+  const qbiThreshold = brackets[3]?.upTo ?? INF
   let qbiDeduction = 0
   let qbiEstimated = true
   if (scheduleCNet > 0) {
@@ -194,33 +295,30 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
       const qbiBase = Math.max(0, scheduleCNet - seTaxDeduction)
       qbiDeduction = Math.min(0.2 * qbiBase, 0.2 * taxableBeforeQbi)
     } else {
-      qbiEstimated = false // above the simple case — we don't guess the limited amount
+      qbiEstimated = false
     }
   }
 
   const taxableIncome = Math.max(0, taxableBeforeQbi - qbiDeduction)
-  const { tax: incomeTax, slices } = taxOn(taxableIncome, brackets)
+  // Qualified dividends inside taxable income are taxed at cap-gains rates; the
+  // rest of taxable income is ordinary.
+  const qualDivTaxable = Math.min(qualDiv, taxableIncome)
+  const ordinaryTaxable = Math.max(0, taxableIncome - qualDivTaxable)
+  const { tax: ordinaryTax, slices } = taxOn(ordinaryTaxable, brackets)
+  const dividendTax = stackedGainsTax(ordinaryTaxable, qualDivTaxable, ltcgFor(year, inp.filingStatus))
+  const incomeTax = ordinaryTax + dividendTax
   const totalTax = incomeTax + seTax
   const balance = totalTax - inp.withholding
 
-  // Marginal band + headroom to the next rate.
-  let marginalRate = brackets[0].rate
-  let bracketTop: number | null = null
-  let last = 0
-  for (const b of brackets) {
-    if (taxableIncome > last) {
-      marginalRate = b.rate
-      bracketTop = b.upTo === INF ? null : b.upTo
-    }
-    last = b.upTo
-  }
-  const roomToNextBracket = bracketTop == null ? null : Math.max(0, bracketTop - taxableIncome)
+  const mb = marginalBand(ordinaryTaxable, brackets)
+  const roomToNextBracket = mb.top == null ? null : Math.max(0, mb.top - ordinaryTaxable)
 
   return {
-    year,
-    exactYear: exact,
-    filingStatus: inp.filingStatus,
+    year, exactYear: exact, filingStatus: inp.filingStatus, residency,
     totalIncome: round(totalIncome),
+    qualifiedDividends: round(qualDivTaxable),
+    dividendTax: round(dividendTax),
+    dividendRate: null,
     seTax: round(seTax),
     seTaxDeduction: round(seTaxDeduction),
     agi: round(agi),
@@ -232,10 +330,10 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
     totalTax: round(totalTax),
     withholding: round(inp.withholding),
     balance: round(balance),
-    marginalRate,
+    marginalRate: mb.rate,
     effectiveRate: totalIncome > 0 ? totalTax / totalIncome : 0,
     slices: slices.map((s) => ({ rate: s.rate, amount: round(s.amount), tax: round(s.tax) })),
-    bracketTop,
+    bracketTop: mb.top,
     roomToNextBracket: roomToNextBracket == null ? null : round(roomToNextBracket),
   }
 }
@@ -248,7 +346,10 @@ export const FILING_STATUS_SHORT: Record<FilingStatus, string> = {
   qw: 'Qualifying surviving spouse',
 }
 
-// Normalize a stored client.filing_status into a FilingStatus (default single).
 export function asFilingStatus(v: unknown): FilingStatus {
   return v === 'mfj' || v === 'mfs' || v === 'hoh' || v === 'qw' ? v : 'single'
+}
+
+export function asResidency(v: unknown): Residency {
+  return v === 'nonresident' ? 'nonresident' : 'resident'
 }

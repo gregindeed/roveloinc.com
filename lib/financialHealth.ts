@@ -130,6 +130,24 @@ export function computeFinancialHealth({ position: p, plan }: Ctx): FinancialHea
 // A short, warm Overseer read composed from the computed figures.
 export function buildOverseerRead({ position: p, caTax, plan, firstName }: Ctx): string {
   const who = firstName?.trim() || 'This filer'
+
+  // Nonresident (1040-NR) read — dividends are the story.
+  if (p.residency === 'nonresident') {
+    const rate = p.dividendRate != null ? pctInt(p.dividendRate) : '30%'
+    const s: string[] = []
+    s.push(
+      `${who} files as a nonresident (Form 1040-NR) on ${usd(p.totalIncome)} of US income for ${p.year}. ` +
+        `The ${usd(p.qualifiedDividends)} in US-source dividends are taxed at ${rate} — about ${usd(p.dividendTax)}.`
+    )
+    if (p.dividendRate != null && p.dividendRate < 0.3) {
+      s.push('That reflects a reduced tax-treaty rate rather than the statutory 30% — the comparison below shows the difference.')
+    } else {
+      s.push('That is the statutory 30% rate; a tax treaty may reduce it — see the comparison below.')
+    }
+    s.push('Total federal tax is estimated at ' + usd(p.totalTax) + '. Confirm residency and the treaty article before filing.')
+    return s.join(' ')
+  }
+
   const stateClause = caTax ? `, plus about ${usd(caTax.tax)} in California tax` : ''
   const s: string[] = []
 

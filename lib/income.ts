@@ -131,6 +131,11 @@ export type IncomeTotals = {
   f1099Total: number
   f1099Withholding: number
   f1099ByType: { type: string; label: string; amount: number }[]
+  // Dividends (1099-DIV) — separated out because they get capital-gains /
+  // treaty treatment rather than ordinary rates.
+  dividends: number
+  // Ordinary 1099 income = f1099Total minus dividends.
+  f1099Ordinary: number
   scheduleCGross: number
   scheduleCNet: number
   totalWithholding: number
@@ -148,6 +153,8 @@ export function computeIncome(
 
   const f1099Total = f1099.reduce((a, r) => a + (r.amount || 0), 0)
   const f1099Withholding = f1099.reduce((a, r) => a + (r.fed_withholding || 0), 0)
+  const dividends = f1099.filter((r) => r.form_type === 'div').reduce((a, r) => a + (r.amount || 0), 0)
+  const f1099Ordinary = f1099Total - dividends
   const byType = new Map<string, number>()
   for (const r of f1099) byType.set(r.form_type, (byType.get(r.form_type) ?? 0) + (r.amount || 0))
   const f1099ByType = Array.from(byType.entries())
@@ -163,6 +170,8 @@ export function computeIncome(
     f1099Total,
     f1099Withholding,
     f1099ByType,
+    dividends,
+    f1099Ordinary,
     scheduleCGross,
     scheduleCNet: scheduleCNetTotal,
     totalWithholding: w2Withholding + f1099Withholding,

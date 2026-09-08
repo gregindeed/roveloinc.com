@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PlanningWorkspace from '@/components/PlanningWorkspace'
 import { computeIncome, type W2Income, type Income1099, type ScheduleC } from '@/lib/income'
-import { computeTaxPosition, asFilingStatus, type TaxPositionInput } from '@/lib/tax'
+import { computeTaxPosition, asFilingStatus, asResidency, type TaxPositionInput } from '@/lib/tax'
 import { buildTaxPlan } from '@/lib/taxPlan'
 import { computeCaTax, isCaResident } from '@/lib/caTax'
 import { computeFinancialHealth, buildOverseerRead } from '@/lib/financialHealth'
@@ -35,22 +35,50 @@ export default async function PlanningPage({ params }: { params: { slug: string;
 
   const hasIncome = totals.totalIncome !== 0 || totals.totalWithholding !== 0
 
+  const residency = asResidency(c.residency)
+  const treatyRate = c.treaty_dividend_rate ?? null
   const taxInput: TaxPositionInput = {
     year,
     filingStatus: asFilingStatus(c.filing_status),
     w2Wages: totals.w2Wages,
     w2SsWages,
-    otherIncome: totals.f1099Total,
+    otherIncome: totals.f1099Ordinary, // dividends taxed separately
     scheduleCNet: totals.scheduleCNet,
+    qualifiedDividends: totals.dividends,
     withholding: totals.totalWithholding,
+    residency,
+    treatyDividendRate: treatyRate,
   }
   const position = computeTaxPosition(taxInput)
-  const caResident = isCaResident(c.state)
+
+  // CA layers on only for a CA-resident filing as a US resident (NR CA-source
+  // tax is a separate regime we don't estimate here).
+  const caResident = isCaResident(c.state) && residency === 'resident'
   const caTax = caResident ? computeCaTax(position.agi, taxInput.filingStatus, year) : null
   const plan = buildTaxPlan(position, taxInput, { caResident })
   const firstName = (c.name ?? '').trim().split(/\s+/)[0] || null
   const health = computeFinancialHealth({ position, caTax, plan, firstName })
   const narrative = buildOverseerRead({ position, caTax, plan, firstName })
+
+  // Scenario comparison — meaningful when there are dividends, since the basis
+  // and treaty rate move the number the most. Total federal tax under each.
+  const scenarioInputs: { key: string; label: string; input: TaxPositionInput }[] = [
+    { key: 'resident', label: 'Resident · 1040', input: { ...taxInput, residency: 'resident', treatyDividendRate: null } },
+    {
+      key: 'nr_treaty',
+      label: `Nonresident · treaty ${treatyRate != null ? `${Math.round(treatyRate * 100)}%` : '10%'}`,
+      input: { ...taxInput, residency: 'nonresident', treatyDividendRate: treatyRate ?? 0.1 },
+    },
+    { key: 'nr_30', label: 'Nonresident · 30%', input: { ...taxInput, residency: 'nonresident', treatyDividendRate: null } },
+  ]
+  const currentKey = residency === 'resident' ? 'resident' : treatyRate != null ? 'nr_treaty' : 'nr_30'
+  const scenarios =
+    totals.dividends > 0
+      ? scenarioInputs.map((s) => {
+          const pos = computeTaxPosition(s.input)
+          return { key: s.key, label: s.label, totalTax: pos.totalTax, current: s.key === currentKey }
+        })
+      : []
 
   return (
     <div className="space-y-6">
@@ -69,8 +97,10 @@ export default async function PlanningPage({ params }: { params: { slug: string;
           plan={plan}
           health={health}
           narrative={narrative}
+          scenarios={scenarios}
           w2Wages={totals.w2Wages}
-          otherIncome={totals.f1099Total}
+          otherIncome={totals.f1099Ordinary}
+          dividends={totals.dividends}
           scheduleCNet={totals.scheduleCNet}
         />
       ) : (
