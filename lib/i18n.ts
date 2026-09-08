@@ -181,6 +181,7 @@ const en: Dict = {
 
   // Client tabs
   'admin.tab.overview': 'Overview',
+  'admin.tab.income': 'Income',
   'admin.tab.transactions': 'Transactions',
   'admin.tab.expenses': 'Expenses',
   'admin.tab.compliance': 'Compliance',
@@ -379,6 +380,7 @@ const es: Dict = {
 
   // Client tabs
   'admin.tab.overview': 'Resumen',
+  'admin.tab.income': 'Ingresos',
   'admin.tab.transactions': 'Transacciones',
   'admin.tab.expenses': 'Gastos',
   'admin.tab.compliance': 'Cumplimiento',

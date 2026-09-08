@@ -16,6 +16,7 @@ export default function ClientTabs({ slug, year, kind }: { slug: string; year: n
     kind === 'individual'
       ? [
           { href: base, label: t('admin.tab.overview'), exact: true },
+          { href: `${base}/income`, label: t('admin.tab.income') },
           { href: `${base}/documents`, label: t('admin.tab.documents') },
           { href: `${base}/compliance`, label: t('admin.tab.compliance') },
         ]

@@ -5,8 +5,10 @@ import { FinancialSummary } from '@/components/Financials'
 import OverviewCommand from '@/components/OverviewCommand'
 import { gatherAndCompute, persistState } from '@/lib/entityStateServer'
 import { parsePeriod, inPeriod } from '@/lib/period'
+import Link from 'next/link'
 import { getLocale } from '@/lib/i18n-server'
 import { localizedAssessment } from '@/lib/assessmentL10n'
+import { computeIncome, type W2Income, type Income1099, type ScheduleC } from '@/lib/income'
 import type { Client, Deposit, CheckingExpense, CCTransaction, Account } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -68,6 +70,23 @@ export default async function Overview({
     ? { content: overviewRead ?? assessment.content, model: assessment.model, created_at: assessment.created_at }
     : null
 
+  // For individuals, total the structured income lines for this year so the
+  // overview shows a real income picture instead of a placeholder.
+  let incomeTotals: ReturnType<typeof computeIncome> | null = null
+  if (c.kind === 'individual') {
+    const [{ data: w2Rows }, { data: f1099Rows }, { data: scRows }] = await Promise.all([
+      supabase.from('w2_income').select('*').eq('client_id', c.id).eq('year', year),
+      supabase.from('income_1099').select('*').eq('client_id', c.id).eq('year', year),
+      supabase.from('schedule_c').select('*').eq('client_id', c.id).eq('year', year),
+    ])
+    incomeTotals = computeIncome(
+      (w2Rows ?? []) as W2Income[],
+      (f1099Rows ?? []) as Income1099[],
+      (scRows ?? []) as ScheduleC[]
+    )
+  }
+  const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+
   return (
     <div className="space-y-8">
       {searchParams.ok && (
@@ -82,12 +101,52 @@ export default async function Overview({
       )}
       <OverviewCommand slug={c.slug} state={state} assessment={overviewAssessment} context={c.overseer_context} />
       {c.kind === 'individual' ? (
-        <div className="rounded-xl border border-gray-200 p-5">
-          <h2 className="text-sm font-semibold text-gray-900 mb-1">Personal return · {year}</h2>
-          <p className="text-sm text-gray-600">
-            Upload W-2s, 1099s, and other income documents under <span className="font-medium">Documents</span> — the
-            Overseer reads and files each one. Structured income lines and Schedule C are coming next.
-          </p>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Personal return · {year}</h2>
+            <Link href={`/admin/clients/${c.slug}/${year}/income`} className="text-xs font-medium text-gray-500 hover:text-gray-900">
+              Manage income →
+            </Link>
+          </div>
+          {incomeTotals && incomeTotals.totalIncome !== 0 ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500">Total income</p>
+                  <p className="text-lg font-semibold text-gray-900 tabular-nums mt-0.5">{usd(incomeTotals.totalIncome)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Wages + 1099s + Sch. C net</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500">W-2 wages</p>
+                  <p className="text-lg font-semibold text-gray-900 tabular-nums mt-0.5">{usd(incomeTotals.w2Wages)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500">1099 income</p>
+                  <p className="text-lg font-semibold text-gray-900 tabular-nums mt-0.5">{usd(incomeTotals.f1099Total)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{incomeTotals.f1099ByType.map((t) => t.label).join(', ') || '—'}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500">Sch. C net</p>
+                  <p className={`text-lg font-semibold tabular-nums mt-0.5 ${incomeTotals.scheduleCNet < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                    {usd(incomeTotals.scheduleCNet)}
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">
+                Federal withheld this year: <span className="tabular-nums">{usd(incomeTotals.totalWithholding)}</span>
+              </p>
+            </>
+          ) : (
+            <div className="rounded-xl border border-dashed border-gray-300 p-5">
+              <p className="text-sm text-gray-600">
+                No income recorded for {year} yet. Add W-2s, 1099s, and Schedule C businesses on the{' '}
+                <Link href={`/admin/clients/${c.slug}/${year}/income`} className="font-medium text-gray-900 hover:text-gray-500">
+                  Income
+                </Link>{' '}
+                tab — or upload the documents under <span className="font-medium">Documents</span> and the Overseer files them.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <>
