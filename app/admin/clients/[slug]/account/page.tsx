@@ -14,6 +14,7 @@ import BankFeed, { type BankConnection } from '@/components/BankFeed'
 import PortalAccessPanel from '@/components/PortalAccessPanel'
 import LifecyclePanel from '@/components/LifecyclePanel'
 import ReviewQueue from '@/components/ReviewQueue'
+import RelationshipsPanel from '@/components/RelationshipsPanel'
 import SettingsShell from '@/components/SettingsShell'
 import { getViewer } from '@/lib/auth'
 import { PERMANENT_FOLDER } from '@/lib/folders'
@@ -133,6 +134,46 @@ export default async function AccountPage({
       .eq('client_id', c.id)
       .order('created_at', { ascending: false })
     bankConnections = (conns ?? []) as BankConnection[]
+  }
+
+  // People ↔ business graph. This entity may sit on either side of a link, so
+  // pull rows where it is the person OR the entity, then resolve the OTHER side
+  // for display. Service role: relationships are visible to anyone who can see
+  // the settings page, and the counterparts are already scoped by that access.
+  let relationships: { id: string; role: string; pct: number | null; name: string; slug: string; kind: string }[] = []
+  if (isManager || viewer?.isOwner) {
+    const admin = createAdminClient()
+    const { data: relRows } = await admin
+      .from('client_relationships')
+      .select('id, role, ownership_pct, person_id, entity_id')
+      .or(`person_id.eq.${c.id},entity_id.eq.${c.id}`)
+    const rows = relRows ?? []
+    const counterpartOf = (r: { person_id: string; entity_id: string }) =>
+      r.person_id === c.id ? r.entity_id : r.person_id
+    const otherIds = Array.from(new Set(rows.map((r) => counterpartOf(r as { person_id: string; entity_id: string }))))
+    if (otherIds.length) {
+      const { data: others } = await admin.from('clients').select('id, name, slug, kind').in('id', otherIds)
+      const byId = new Map(
+        (others ?? []).map((o) => [
+          o.id as string,
+          o as { name: string; slug: string; kind: string | null },
+        ])
+      )
+      relationships = rows
+        .map((r) => {
+          const other = byId.get(counterpartOf(r as { person_id: string; entity_id: string }))
+          if (!other) return null
+          return {
+            id: r.id as string,
+            role: (r.role as string) ?? 'owner',
+            pct: (r.ownership_pct as number | null) ?? null,
+            name: other.name,
+            slug: other.slug,
+            kind: other.kind ?? 'business',
+          }
+        })
+        .filter(Boolean) as typeof relationships
+    }
   }
 
   return (
@@ -334,6 +375,21 @@ export default async function AccountPage({
                   key: 'access',
                   label: 'Collaborators',
                   content: <EntityAccessPanel slug={c.slug} entityName={c.name} collaborators={collaborators} />,
+                },
+              ]
+            : []),
+          ...(isManager || viewer?.isOwner
+            ? [
+                {
+                  key: 'relationships',
+                  label: c.kind === 'individual' ? 'Businesses' : 'People',
+                  content: (
+                    <RelationshipsPanel
+                      slug={c.slug}
+                      clientKind={c.kind ?? 'business'}
+                      relationships={relationships}
+                    />
+                  ),
                 },
               ]
             : []),
