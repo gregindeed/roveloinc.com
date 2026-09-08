@@ -5,6 +5,8 @@ import { FinancialSummary } from '@/components/Financials'
 import OverviewCommand from '@/components/OverviewCommand'
 import { gatherAndCompute, persistState } from '@/lib/entityStateServer'
 import { parsePeriod, inPeriod } from '@/lib/period'
+import { getLocale } from '@/lib/i18n-server'
+import { localizedAssessment } from '@/lib/assessmentL10n'
 import type { Client, Deposit, CheckingExpense, CCTransaction, Account } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -33,7 +35,7 @@ export default async function Overview({
       supabase.from('cc_transactions').select('*').eq('client_id', c.id).order('post_date'),
       supabase
         .from('ai_assessments')
-        .select('content, model, created_at')
+        .select('content, model, created_at, source_lang, translations')
         .eq('client_id', c.id)
         .eq('scope', 'overview')
         .maybeSingle(),
@@ -47,6 +49,25 @@ export default async function Overview({
   const state = await gatherAndCompute(supabase, c)
   await persistState(supabase, c.id, state)
 
+  // Show the Overseer read in the viewer's language (translate + cache on first
+  // view in a new language).
+  const locale = getLocale()
+  const overviewRead = assessment
+    ? await localizedAssessment(
+        {
+          client_id: c.id,
+          scope: 'overview',
+          content: assessment.content,
+          source_lang: assessment.source_lang ?? null,
+          translations: assessment.translations ?? null,
+        },
+        locale
+      )
+    : null
+  const overviewAssessment = assessment
+    ? { content: overviewRead ?? assessment.content, model: assessment.model, created_at: assessment.created_at }
+    : null
+
   return (
     <div className="space-y-8">
       {searchParams.ok && (
@@ -59,7 +80,7 @@ export default async function Overview({
           {searchParams.warn}
         </div>
       )}
-      <OverviewCommand slug={c.slug} state={state} assessment={assessment} context={c.overseer_context} />
+      <OverviewCommand slug={c.slug} state={state} assessment={overviewAssessment} context={c.overseer_context} />
       <PeriodBar />
       <div>
         <h2 className="text-sm font-semibold text-gray-900 mb-3">Summary · {period.label}</h2>

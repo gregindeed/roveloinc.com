@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DocumentsPanel from '@/components/DocumentsPanel'
 import FolderCard from '@/components/FolderCard'
-import { DOC_CATEGORIES, MONTHS, categoryLabel, monthLabel } from '@/lib/folders'
+import { DOC_CATEGORIES, categoryLabel } from '@/lib/folders'
 
 const SPECIAL_FOLDERS = ['permanent', 'agency_notices']
 import type { DocumentRow } from '@/lib/types'
@@ -62,13 +62,11 @@ export default async function DocumentsPage({
   const base = `/admin/clients/${client.slug}/${params.year}/documents`
   const yearParam = searchParams.year ?? null
   const folderParam = searchParams.folder ?? null
-  const monthParam = searchParams.month ?? null
 
   if (yearParam) {
     const unfiled = yearParam === 'unfiled'
     const year = unfiled ? null : parseInt(yearParam, 10)
     const yearHref = `${base}?year=${year}`
-    const folderHref = `${yearHref}&folder=${folderParam}`
 
     // ---------- Unfiled bucket: source docs with no period yet ----------
     if (unfiled) {
@@ -97,72 +95,30 @@ export default async function DocumentsPage({
       )
     }
 
-    // ---------- STATE D: files inside a month (or Unsorted) ----------
-    if (folderParam && monthParam) {
-      const unsorted = monthParam === 'none'
-      const month = unsorted ? null : parseInt(monthParam, 10)
-
-      let q = supabase
+    // ---------- Category open: list its files directly (month shown per row) ----------
+    if (folderParam) {
+      const { data: documents } = await supabase
         .from('documents')
         .select('*')
         .eq('client_id', client.id)
         .eq('period_year', year!)
         .eq('folder', folderParam)
-      q = unsorted ? q.is('period_month', null) : q.eq('period_month', month!)
-      const { data: documents } = await q.order('created_at', { ascending: false })
+        .order('period_month', { ascending: true })
+        .order('created_at', { ascending: false })
 
-      const mLabel = unsorted ? 'Unsorted' : monthLabel(month)
       return (
         <div className="space-y-5">
           <Banner ok={searchParams.ok} warn={searchParams.warn} />
-          <Crumbs
-            base={base}
-            parts={[
-              { label: String(year), href: yearHref },
-              { label: categoryLabel(folderParam), href: folderHref },
-              { label: mLabel },
-            ]}
-          />
+          <Crumbs base={base} parts={[{ label: String(year), href: yearHref }, { label: categoryLabel(folderParam) }]} />
           <DocumentsPanel
             clientId={client.id}
             currentUserId={user!.id}
             isAdmin={true}
             initialDocs={(documents ?? []) as DocumentRow[]}
-            title={`${categoryLabel(folderParam)} · ${mLabel} ${year}`}
+            title={`${categoryLabel(folderParam)} · ${year}`}
             year={year}
             folder={folderParam}
-            month={month}
-            nullMonth={unsorted}
           />
-        </div>
-      )
-    }
-
-    // ---------- STATE C: category open, choose a month ----------
-    if (folderParam) {
-      const { data: folderDocs } = await supabase
-        .from('documents')
-        .select('period_month')
-        .eq('client_id', client.id)
-        .eq('period_year', year!)
-        .eq('folder', folderParam)
-      const byMonth: Record<number, number> = {}
-      let unsortedCount = 0
-      for (const d of folderDocs ?? []) {
-        if (d.period_month == null) unsortedCount++
-        else byMonth[d.period_month] = (byMonth[d.period_month] ?? 0) + 1
-      }
-
-      return (
-        <div className="space-y-6">
-          <Banner ok={searchParams.ok} warn={searchParams.warn} />
-          <Crumbs base={base} parts={[{ label: String(year), href: yearHref }, { label: categoryLabel(folderParam) }]} />
-          <div className="grid grid-cols-3 gap-3">
-            {MONTHS.map((m) => (
-              <FolderCard key={m.n} href={`${folderHref}&month=${m.n}`} label={m.label} count={byMonth[m.n] ?? 0} />
-            ))}
-            <FolderCard href={`${folderHref}&month=none`} label="Unsorted" count={unsortedCount} muted />
-          </div>
         </div>
       )
     }

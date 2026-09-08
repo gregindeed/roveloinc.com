@@ -19,7 +19,7 @@ export function overseerModel() {
   return process.env.ANTHROPIC_MODEL || DEFAULT_MODEL
 }
 
-export async function assess(scope: string, context: unknown): Promise<string> {
+export async function assess(scope: string, context: unknown, locale?: string): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set')
 
@@ -33,7 +33,7 @@ export async function assess(scope: string, context: unknown): Promise<string> {
     body: JSON.stringify({
       model: overseerModel(),
       max_tokens: 400,
-      system: SYSTEM,
+      system: SYSTEM + localeInstruction(locale),
       messages: [
         {
           role: 'user',
@@ -98,6 +98,37 @@ function localeInstruction(locale?: string): string {
   return locale === 'es'
     ? '\n\nIMPORTANT: Write all prose you return (read, handling, acknowledgment) in natural, fluent Spanish (español). Keep proper nouns and agency/form names as-is.'
     : ''
+}
+
+// Translate a short Overseer note into the target language, preserving meaning,
+// tone, and any proper nouns / form numbers / amounts. Returns the original text
+// on any failure so a view never breaks over a translation.
+export async function translate(text: string, target: 'en' | 'es'): Promise<string> {
+  const key = process.env.ANTHROPIC_API_KEY
+  if (!key || !text.trim()) return text
+  const langName = target === 'es' ? 'Spanish (español)' : 'English'
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: overseerModel(),
+        max_tokens: 600,
+        system: `You translate a short bookkeeping/compliance note into ${langName}. Return ONLY the translation — same meaning, first person, same tone, no preamble and no quotes. Keep proper nouns, agency names, form numbers, and dollar amounts exactly as written.`,
+        messages: [{ role: 'user', content: text }],
+      }),
+    })
+    if (!res.ok) return text
+    const data = await res.json()
+    const out = (data?.content ?? [])
+      .filter((b: { type?: string }) => b.type === 'text')
+      .map((b: { text?: string }) => b.text ?? '')
+      .join('\n')
+      .trim()
+    return out || text
+  } catch {
+    return text
+  }
 }
 
 export async function onboardingBrief(context: unknown, locale?: string): Promise<OnboardingBrief> {

@@ -7,6 +7,7 @@ import { assess, overseerModel } from '@/lib/ai'
 import { logEvent, registryDigest } from '@/lib/registryServer'
 import type { Client } from '@/lib/types'
 import { entityBase } from '@/lib/entityYear'
+import { getLocale } from '@/lib/i18n-server'
 
 async function admin() {
   const supabase = createClient()
@@ -206,17 +207,19 @@ export async function generateAssessment(slug: string, scope: string) {
     ...scoped,
   }
 
+  const locale = getLocale()
   let content: string
   try {
-    content = await assess(scope, context)
+    content = await assess(scope, context, locale)
   } catch (e) {
     content = `Assessment unavailable: ${e instanceof Error ? e.message : 'unknown error'}`
   }
 
+  // Store the language it was written in and clear any stale cached translations.
   await supabase
     .from('ai_assessments')
     .upsert(
-      { client_id: c.id, scope, content, model: overseerModel() },
+      { client_id: c.id, scope, content, model: overseerModel(), source_lang: locale, translations: {} },
       { onConflict: 'client_id,scope' }
     )
   const sub = scope === 'compliance' || scope === 'documents' ? `/${scope}` : ''
