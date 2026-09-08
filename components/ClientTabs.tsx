@@ -17,6 +17,7 @@ export default function ClientTabs({ slug, year, kind }: { slug: string; year: n
       ? [
           { href: base, label: t('admin.tab.overview'), exact: true },
           { href: `${base}/income`, label: t('admin.tab.income') },
+          { href: `${base}/planning`, label: t('admin.tab.planning') },
           { href: `${base}/documents`, label: t('admin.tab.documents') },
           { href: `${base}/compliance`, label: t('admin.tab.compliance') },
         ]
