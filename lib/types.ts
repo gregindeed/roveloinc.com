@@ -28,6 +28,8 @@ export type Client = {
   entity_type: EntityType | null
   kind?: 'business' | 'individual'
   filing_status?: string | null
+  // Home / residency state (2-letter or name) — set at onboarding; drives state tax.
+  state?: string | null
   ein: string | null
   ca_sos_number: string | null
   cdtfa_account: string | null

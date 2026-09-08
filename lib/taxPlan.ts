@@ -6,6 +6,7 @@
 // Directional moves (S-corp election) are flagged; they need a human to finish.
 
 import { computeTaxPosition, type TaxPosition, type TaxPositionInput } from '@/lib/tax'
+import { computeCaTax } from '@/lib/caTax'
 
 type RetirementLimits = { deferral401k: number; ira: number; dc415c: number; compCap: number }
 
@@ -39,17 +40,23 @@ const SE_NET_FACTOR = 0.9235
 const SS_RATE = 0.124
 const MEDICARE_RATE = 0.029
 
-export function buildTaxPlan(base: TaxPosition, input: TaxPositionInput): PlanMove[] {
+export function buildTaxPlan(base: TaxPosition, input: TaxPositionInput, opts?: { caResident?: boolean }): PlanMove[] {
   const moves: PlanMove[] = []
   if (base.totalIncome <= 0) return moves
 
   const L = limitsFor(base.year)
   const table = { ssWageBase: base.year >= 2026 ? 184500 : base.year === 2025 ? 176100 : 168600 }
 
+  // CA state tax rolls into the savings so a move's dollar impact is the full
+  // (federal + California) reduction for a CA resident.
+  const caResident = !!opts?.caResident
+  const stateTaxAt = (agi: number) => (caResident ? computeCaTax(agi, input.filingStatus, base.year).tax : 0)
+  const baseTotal = base.totalTax + stateTaxAt(base.agi)
+
   // Re-run the engine with an added pre-tax adjustment and return the tax saved.
   const savingsFor = (extraPreTax: number): number => {
     const alt = computeTaxPosition({ ...input, preTaxAdjustments: (input.preTaxAdjustments ?? 0) + extraPreTax })
-    return Math.max(0, base.totalTax - alt.totalTax)
+    return Math.max(0, baseTotal - (alt.totalTax + stateTaxAt(alt.agi)))
   }
 
   const selfEmployed = input.scheduleCNet > 0

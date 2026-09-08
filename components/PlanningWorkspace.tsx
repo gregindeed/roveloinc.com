@@ -1,5 +1,7 @@
 import { FILING_STATUS_SHORT, type TaxPosition } from '@/lib/tax'
+import type { CaTaxPosition } from '@/lib/caTax'
 import type { PlanMove, PlanCategory } from '@/lib/taxPlan'
+import type { FinancialHealth, HealthStatus } from '@/lib/financialHealth'
 
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`
@@ -76,15 +78,27 @@ function MoveCard({ move }: { move: PlanMove }) {
   )
 }
 
+const HEALTH_DOT: Record<HealthStatus, string> = {
+  good: 'bg-emerald-500',
+  watch: 'bg-amber-500',
+  risk: 'bg-red-500',
+}
+
 export default function PlanningWorkspace({
   position,
+  caTax,
   plan,
+  health,
+  narrative,
   otherIncome,
   scheduleCNet,
   w2Wages,
 }: {
   position: TaxPosition
+  caTax: CaTaxPosition | null
   plan: PlanMove[]
+  health: FinancialHealth
+  narrative: string
   otherIncome: number
   scheduleCNet: number
   w2Wages: number
@@ -95,26 +109,71 @@ export default function PlanningWorkspace({
   const totalSavings = plan.reduce((a, m) => a + (m.estSavings ?? 0), 0)
   const hasDirectional = plan.some((m) => m.confidence === 'directional' && m.estSavings != null)
 
+  // Combined federal + CA figures for the headline tiles.
+  const combinedTax = p.totalTax + (caTax?.tax ?? 0)
+  const combinedEffective = p.totalIncome > 0 ? combinedTax / p.totalIncome : 0
+
   return (
     <div className="space-y-6">
       {/* Estimate banner */}
       <div className="rounded-lg border border-blue-100 bg-blue-50 px-3.5 py-2.5 text-xs text-blue-800">
-        Federal estimate for {p.year}
-        {!p.exactYear && <span> (using the closest year we have tables for)</span>} · filing {FILING_STATUS_SHORT[p.filingStatus]} ·
+        {caTax ? 'Federal + California' : 'Federal'} estimate for {p.year}
+        {!p.exactYear && <span> (nearest year we have tables for)</span>} · filing {FILING_STATUS_SHORT[p.filingStatus]} ·
         standard deduction · simplified self-employment tax{p.qbiDeduction > 0 ? ' and QBI' : ''}. A planning figure, not a filed return.
+      </div>
+
+      {/* The Overseer's read */}
+      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-gray-400 mb-2">The Overseer</div>
+        <p className="text-[15px] leading-relaxed text-gray-800">{narrative}</p>
       </div>
 
       {/* Headline tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Tile label="Est. total federal tax" value={usd(p.totalTax)} sub={`Income ${usd(p.incomeTax)} + SE ${usd(p.seTax)}`} />
-        <Tile label="Effective rate" value={pct(p.effectiveRate)} sub="of total income" />
-        <Tile label="Marginal bracket" value={pctInt(p.marginalRate)} sub={p.bracketTop != null ? `top at ${usd(p.bracketTop)}` : 'top bracket'} />
         <Tile
-          label={owes ? 'Estimated balance due' : 'Estimated refund'}
+          label="Est. total tax"
+          value={usd(combinedTax)}
+          sub={caTax ? `Federal ${usd(p.totalTax)} + CA ${usd(caTax.tax)}` : `Income ${usd(p.incomeTax)} + SE ${usd(p.seTax)}`}
+        />
+        <Tile label="Effective rate" value={pct(combinedEffective)} sub={caTax ? 'federal + CA' : 'of total income'} />
+        <Tile
+          label="Marginal bracket"
+          value={caTax ? `${pctInt(p.marginalRate)} + ${pctInt(caTax.marginalRate)}` : pctInt(p.marginalRate)}
+          sub={caTax ? 'federal + CA' : p.bracketTop != null ? `top at ${usd(p.bracketTop)}` : 'top bracket'}
+        />
+        <Tile
+          label={owes ? 'Federal balance due' : 'Federal refund'}
           value={usd(Math.abs(p.balance))}
           sub={`${usd(p.withholding)} withheld`}
           tone={owes ? 'bad' : 'good'}
         />
+      </div>
+
+      {/* Financial-health read */}
+      <div className="rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center gap-4">
+          <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-full border-2 border-gray-900">
+            <span className="text-xl font-bold text-gray-900 tabular-nums leading-none">{health.score}</span>
+            <span className="text-[9px] text-gray-400">/ 100</span>
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Financial health</h2>
+              <span className="text-xs font-medium text-gray-500">{health.grade}</span>
+            </div>
+            <p className="text-sm text-gray-600 mt-0.5">{health.summary}</p>
+          </div>
+        </div>
+        <div className="mt-4 space-y-2">
+          {health.factors.map((f) => (
+            <div key={f.key} className="flex items-start gap-2.5">
+              <span className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${HEALTH_DOT[f.status]}`} />
+              <p className="text-sm text-gray-600">
+                <span className="font-medium text-gray-900">{f.label}.</span> {f.note}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* The plan — ranked moves */}
@@ -231,9 +290,27 @@ export default function PlanningWorkspace({
         </div>
       </div>
 
+      {/* California breakdown */}
+      {caTax && (
+        <div className="rounded-xl border border-gray-200 overflow-hidden">
+          <h2 className="text-sm font-semibold text-gray-900 px-4 pt-4 pb-1">
+            California state tax{!caTax.exactYear && <span className="font-normal text-gray-400"> · {caTax.year} tables</span>}
+          </h2>
+          <div className="divide-y divide-gray-100">
+            <Line label="Federal AGI (starting point)" value={usd(p.agi)} />
+            <Line label="Less: CA standard deduction" value={`(${usd(caTax.standardDeduction)})`} negative />
+            <Line label="CA taxable income" value={usd(caTax.taxableIncome)} strong />
+            <Line label="CA state tax" value={usd(caTax.tax)} strong />
+            <Line label="CA effective rate" value={pct(caTax.effectiveRate)} note="of federal AGI" />
+          </div>
+        </div>
+      )}
+
       <p className="text-xs text-gray-400">
-        Estimate only — federal, standard deduction, ordinary rates. It doesn&apos;t model itemized deductions, credits, capital
-        gains rates, the additional Medicare tax, or state tax. Use it to plan, not to file.
+        Estimate only — {caTax ? 'federal and California' : 'federal'}, standard deduction, ordinary rates. It doesn&apos;t model
+        itemized deductions, credits{caTax ? ' (including CA exemption credits)' : ''}, capital-gains rates, the additional Medicare
+        tax{caTax ? '' : ', or state tax'}. State withholding isn&apos;t tracked yet, so the refund/owe figure is federal only. Use it
+        to plan, not to file.
       </p>
     </div>
   )

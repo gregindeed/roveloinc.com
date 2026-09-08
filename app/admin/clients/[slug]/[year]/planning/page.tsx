@@ -4,6 +4,8 @@ import PlanningWorkspace from '@/components/PlanningWorkspace'
 import { computeIncome, type W2Income, type Income1099, type ScheduleC } from '@/lib/income'
 import { computeTaxPosition, asFilingStatus, type TaxPositionInput } from '@/lib/tax'
 import { buildTaxPlan } from '@/lib/taxPlan'
+import { computeCaTax, isCaResident } from '@/lib/caTax'
+import { computeFinancialHealth, buildOverseerRead } from '@/lib/financialHealth'
 import type { Client } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -43,7 +45,12 @@ export default async function PlanningPage({ params }: { params: { slug: string;
     withholding: totals.totalWithholding,
   }
   const position = computeTaxPosition(taxInput)
-  const plan = buildTaxPlan(position, taxInput)
+  const caResident = isCaResident(c.state)
+  const caTax = caResident ? computeCaTax(position.agi, taxInput.filingStatus, year) : null
+  const plan = buildTaxPlan(position, taxInput, { caResident })
+  const firstName = (c.name ?? '').trim().split(/\s+/)[0] || null
+  const health = computeFinancialHealth({ position, caTax, plan, firstName })
+  const narrative = buildOverseerRead({ position, caTax, plan, firstName })
 
   return (
     <div className="space-y-6">
@@ -58,7 +65,10 @@ export default async function PlanningPage({ params }: { params: { slug: string;
       {hasIncome ? (
         <PlanningWorkspace
           position={position}
+          caTax={caTax}
           plan={plan}
+          health={health}
+          narrative={narrative}
           w2Wages={totals.w2Wages}
           otherIncome={totals.f1099Total}
           scheduleCNet={totals.scheduleCNet}
