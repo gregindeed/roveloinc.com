@@ -111,6 +111,9 @@ export type TaxPositionInput = {
   otherIncome: number // 1099 income treated as ordinary (estimate)
   scheduleCNet: number // net profit across Schedule C businesses
   withholding: number // W-2 Box 2 + 1099 federal withholding
+  // Above-the-line adjustments beyond the ½ SE-tax deduction — e.g. modeling a
+  // pre-tax retirement contribution or HSA. Reduces AGI. Used by the planner.
+  preTaxAdjustments?: number
 }
 
 export type BracketSlice = { rate: number; amount: number; tax: number }
@@ -176,7 +179,7 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
   const seTax = seBase > 0 ? seSS + seMedicare : 0
   const seTaxDeduction = seTax * 0.5
 
-  const agi = Math.max(0, totalIncome - seTaxDeduction)
+  const agi = Math.max(0, totalIncome - seTaxDeduction - (inp.preTaxAdjustments ?? 0))
   const standardDeduction = table.stdDeduction[inp.filingStatus]
   const taxableBeforeQbi = Math.max(0, agi - standardDeduction)
 

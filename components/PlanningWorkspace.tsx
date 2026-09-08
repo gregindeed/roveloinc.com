@@ -1,4 +1,5 @@
 import { FILING_STATUS_SHORT, type TaxPosition } from '@/lib/tax'
+import type { PlanMove, PlanCategory } from '@/lib/taxPlan'
 
 const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`
@@ -40,13 +41,50 @@ function Line({ label, value, note, strong, negative }: { label: string; value: 
   )
 }
 
+const CATEGORY_LABEL: Record<PlanCategory, string> = {
+  retirement: 'Retirement',
+  entity: 'Entity',
+  timing: 'Timing',
+  compliance: 'Compliance',
+}
+
+function MoveCard({ move }: { move: PlanMove }) {
+  return (
+    <div className="rounded-xl border border-gray-200 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+            {CATEGORY_LABEL[move.category]}
+          </span>
+          <h3 className="text-sm font-semibold text-gray-900 mt-1.5">{move.title}</h3>
+        </div>
+        {move.estSavings != null && move.estSavings > 0 && (
+          <div className="text-right whitespace-nowrap">
+            <div className="text-sm font-semibold text-emerald-600 tabular-nums">~{usd(move.estSavings)}</div>
+            <div className="text-[10px] text-gray-400">est. {move.confidence === 'directional' ? 'saving*' : 'tax saved'}</div>
+          </div>
+        )}
+      </div>
+      <p className="text-sm text-gray-600 mt-2 leading-relaxed">{move.detail}</p>
+      {move.action && (
+        <p className="text-xs text-gray-900 mt-2 flex items-start gap-1.5">
+          <span className="text-gray-400">→</span>
+          <span className="font-medium">{move.action}</span>
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function PlanningWorkspace({
   position,
+  plan,
   otherIncome,
   scheduleCNet,
   w2Wages,
 }: {
   position: TaxPosition
+  plan: PlanMove[]
   otherIncome: number
   scheduleCNet: number
   w2Wages: number
@@ -54,6 +92,8 @@ export default function PlanningWorkspace({
   const p = position
   const owes = p.balance >= 0
   const barTotal = p.taxableIncome + (p.roomToNextBracket ?? 0)
+  const totalSavings = plan.reduce((a, m) => a + (m.estSavings ?? 0), 0)
+  const hasDirectional = plan.some((m) => m.confidence === 'directional' && m.estSavings != null)
 
   return (
     <div className="space-y-6">
@@ -76,6 +116,30 @@ export default function PlanningWorkspace({
           tone={owes ? 'bad' : 'good'}
         />
       </div>
+
+      {/* The plan — ranked moves */}
+      {plan.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Plan for {p.year}</h2>
+            {totalSavings > 0 && (
+              <span className="text-xs text-gray-500">
+                Up to <span className="font-semibold text-emerald-600">~{usd(totalSavings)}</span> in estimated savings identified
+              </span>
+            )}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {plan.map((m) => (
+              <MoveCard key={m.key} move={m} />
+            ))}
+          </div>
+          {hasDirectional && (
+            <p className="text-[11px] text-gray-400">
+              * Directional estimate — depends on choices (e.g. reasonable compensation) that need a person to finalize.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Planning read */}
       <div className="rounded-xl border border-gray-200 p-5 space-y-1.5">

@@ -2,7 +2,8 @@ import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PlanningWorkspace from '@/components/PlanningWorkspace'
 import { computeIncome, type W2Income, type Income1099, type ScheduleC } from '@/lib/income'
-import { computeTaxPosition, asFilingStatus } from '@/lib/tax'
+import { computeTaxPosition, asFilingStatus, type TaxPositionInput } from '@/lib/tax'
+import { buildTaxPlan } from '@/lib/taxPlan'
 import type { Client } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -32,7 +33,7 @@ export default async function PlanningPage({ params }: { params: { slug: string;
 
   const hasIncome = totals.totalIncome !== 0 || totals.totalWithholding !== 0
 
-  const position = computeTaxPosition({
+  const taxInput: TaxPositionInput = {
     year,
     filingStatus: asFilingStatus(c.filing_status),
     w2Wages: totals.w2Wages,
@@ -40,7 +41,9 @@ export default async function PlanningPage({ params }: { params: { slug: string;
     otherIncome: totals.f1099Total,
     scheduleCNet: totals.scheduleCNet,
     withholding: totals.totalWithholding,
-  })
+  }
+  const position = computeTaxPosition(taxInput)
+  const plan = buildTaxPlan(position, taxInput)
 
   return (
     <div className="space-y-6">
@@ -55,6 +58,7 @@ export default async function PlanningPage({ params }: { params: { slug: string;
       {hasIncome ? (
         <PlanningWorkspace
           position={position}
+          plan={plan}
           w2Wages={totals.w2Wages}
           otherIncome={totals.f1099Total}
           scheduleCNet={totals.scheduleCNet}
