@@ -38,12 +38,6 @@ export default async function GuidedNew({ searchParams }: { searchParams: { org?
             rovelo<span className="text-gray-400" style={{ fontWeight: 400 }}>.inc</span>
           </span>
           <div className="flex items-center gap-5">
-            <Link
-              href={searchParams.org ? `/admin/new?org=${searchParams.org}` : '/admin/new'}
-              className="text-sm text-gray-300 hover:text-gray-600"
-            >
-              {ob(locale, 'page.classic')}
-            </Link>
             <Link href="/admin" className="text-sm text-gray-400 hover:text-gray-900">
               {ob(locale, 'page.cancel')}
             </Link>
