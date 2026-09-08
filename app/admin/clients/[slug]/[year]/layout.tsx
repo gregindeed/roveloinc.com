@@ -10,6 +10,7 @@ import YearManager from '@/components/YearManager'
 import { getViewer } from '@/lib/auth'
 import { entityPresence } from '@/lib/presenceServer'
 import { getClientYears } from '@/lib/yearsServer'
+import { FILING_STATUS_LABELS } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,7 +56,16 @@ export default async function YearLayout({
             {c.owner_name ? `${c.owner_name} · ` : ''}
             {c.address ?? ''}
           </p>
-          <EntityQuickBar c={c} />
+          {c.kind === 'individual' ? (
+            <p className="text-xs mt-2">
+              <span className="text-gray-500">Individual</span>
+              {c.filing_status && (
+                <span className="text-gray-900 font-medium"> · {FILING_STATUS_LABELS[c.filing_status] ?? c.filing_status}</span>
+              )}
+            </p>
+          ) : (
+            <EntityQuickBar c={c} />
+          )}
         </div>
         <div className="flex items-center gap-2 whitespace-nowrap">
           <GlobalIntake
@@ -94,7 +104,7 @@ export default async function YearLayout({
         <YearManager slug={c.slug} years={years} selectedYear={year} canManage={canManage} />
       </div>
 
-      <ClientTabs slug={c.slug} year={year} />
+      <ClientTabs slug={c.slug} year={year} kind={c.kind} />
       <div className="mt-6">{children}</div>
     </>
   )

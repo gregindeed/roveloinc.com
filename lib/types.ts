@@ -26,6 +26,8 @@ export type Client = {
   owner_name: string | null
   address: string | null
   entity_type: EntityType | null
+  kind?: 'business' | 'individual'
+  filing_status?: string | null
   ein: string | null
   ca_sos_number: string | null
   cdtfa_account: string | null
@@ -56,6 +58,14 @@ export type Client = {
   files_franchise_tax?: boolean | null
   files_soi?: boolean | null
   has_city_license?: boolean | null
+}
+
+export const FILING_STATUS_LABELS: Record<string, string> = {
+  single: 'Single',
+  mfj: 'Married filing jointly',
+  mfs: 'Married filing separately',
+  hoh: 'Head of household',
+  qw: 'Qualifying surviving spouse',
 }
 
 export type Account = {

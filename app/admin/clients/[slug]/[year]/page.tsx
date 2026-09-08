@@ -81,19 +81,31 @@ export default async function Overview({
         </div>
       )}
       <OverviewCommand slug={c.slug} state={state} assessment={overviewAssessment} context={c.overseer_context} />
-      <PeriodBar />
-      <div>
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Summary · {period.label}</h2>
-        <FinancialSummary
-          deposits={dep}
-          checking={chk}
-          cc={card}
-          accounts={(accounts ?? []) as Account[]}
-          periodLabel={period.label}
-          slug={c.slug}
-          year={year}
-        />
-      </div>
+      {c.kind === 'individual' ? (
+        <div className="rounded-xl border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-900 mb-1">Personal return · {year}</h2>
+          <p className="text-sm text-gray-600">
+            Upload W-2s, 1099s, and other income documents under <span className="font-medium">Documents</span> — the
+            Overseer reads and files each one. Structured income lines and Schedule C are coming next.
+          </p>
+        </div>
+      ) : (
+        <>
+          <PeriodBar />
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 mb-3">Summary · {period.label}</h2>
+            <FinancialSummary
+              deposits={dep}
+              checking={chk}
+              cc={card}
+              accounts={(accounts ?? []) as Account[]}
+              periodLabel={period.label}
+              slug={c.slug}
+              year={year}
+            />
+          </div>
+        </>
+      )}
     </div>
   )
 }

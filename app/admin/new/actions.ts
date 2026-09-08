@@ -65,6 +65,8 @@ export async function createClientAccount(formData: FormData) {
   const entityType = String(formData.get('entity_type') || '').trim() || null
   const basis = String(formData.get('accounting_method') || 'cash').trim() // default cash
   const templateKey = String(formData.get('template') || DEFAULT_TEMPLATE_KEY).trim()
+  const kind = String(formData.get('kind') || 'business').trim() === 'individual' ? 'individual' : 'business'
+  const filingStatus = kind === 'individual' ? String(formData.get('filing_status') || '').trim() || null : null
 
   if (!name) fail('Business name is required.')
   if (!slug) fail('A URL slug is required.')
@@ -88,9 +90,11 @@ export async function createClientAccount(formData: FormData) {
       name,
       slug,
       org_id: orgId,
+      kind,
+      filing_status: filingStatus,
       owner_name: primaryOwner,
       address,
-      entity_type: entityType,
+      entity_type: kind === 'individual' ? null : entityType,
       accounting_method: basis === 'accrual' ? 'accrual' : 'cash',
     })
     .select('id, slug, name')
@@ -108,17 +112,21 @@ export async function createClientAccount(formData: FormData) {
   }
 
   // 2) Seed the chart of accounts from the chosen template (default general).
-  const template = CHART_TEMPLATES[VALID_TEMPLATES.has(templateKey) ? templateKey : DEFAULT_TEMPLATE_KEY]
-  await admin.from('chart_of_accounts').insert(
-    template.accounts.map((a, i) => ({
-      client_id: client!.id,
-      code: a.code,
-      name: a.name,
-      type: a.type,
-      tax_line: a.tax_line ?? null,
-      sort: i,
-    }))
-  )
+  //    Individuals don't get a business chart of accounts (a Schedule C would,
+  //    later); their books are organized around income documents instead.
+  if (kind !== 'individual') {
+    const template = CHART_TEMPLATES[VALID_TEMPLATES.has(templateKey) ? templateKey : DEFAULT_TEMPLATE_KEY]
+    await admin.from('chart_of_accounts').insert(
+      template.accounts.map((a, i) => ({
+        client_id: client!.id,
+        code: a.code,
+        name: a.name,
+        type: a.type,
+        tax_line: a.tax_line ?? null,
+        sort: i,
+      }))
+    )
+  }
 
   // Genesis: the first line of the entity's registry — where its record begins.
   await logEvent(admin as unknown as ReturnType<typeof createServerClient>, client!.id, {
