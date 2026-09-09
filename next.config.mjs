@@ -2,6 +2,10 @@
 const nextConfig = {
   // Runs as a Node server (via OpenNext on Cloudflare Workers) — no static export.
 
+  // Don't advertise the framework, and catch unsafe lifecycles in dev.
+  poweredByHeader: false,
+  reactStrictMode: true,
+
   // Type safety is enforced by `tsc --noEmit` (run it before deploying). ESLint
   // isn't fully wired here, and a lint-config quirk (an inline disable that
   // references a rule the base config doesn't load) was failing `next build`.

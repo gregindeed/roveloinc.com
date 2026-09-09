@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { VIEWER_ID_HEADER, VIEWER_EMAIL_HEADER } from '@/lib/authHeaders'
 
 // Security headers applied to every response. For a portal serving financial
 // data: force HTTPS, block framing (clickjacking), stop MIME sniffing, and trim
@@ -28,11 +29,18 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const guarded = path.startsWith('/admin') || path.startsWith('/portal')
 
+  // Start from the inbound headers but STRIP the trusted-identity headers, so a
+  // client can never smuggle them in. Only the validated block below re-adds
+  // them, and only after getUser() has confirmed who the request is.
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.delete(VIEWER_ID_HEADER)
+  requestHeaders.delete(VIEWER_EMAIL_HEADER)
+
   if (!guarded) {
-    return withHeaders(NextResponse.next({ request }))
+    return withHeaders(NextResponse.next({ request: { headers: requestHeaders } }))
   }
 
-  let response = NextResponse.next({ request })
+  let response = NextResponse.next({ request: { headers: requestHeaders } })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,7 +52,7 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
+          response = NextResponse.next({ request: { headers: requestHeaders } })
           cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
         },
       },
@@ -73,7 +81,15 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  return withHeaders(response)
+  // Session is validated — hand the identity to the page so getViewer() doesn't
+  // repeat the getUser() round-trip. Rebuild the response with the augmented
+  // request headers, carrying over any auth cookies the refresh just set so the
+  // session still persists.
+  requestHeaders.set(VIEWER_ID_HEADER, user.id)
+  if (user.email) requestHeaders.set(VIEWER_EMAIL_HEADER, user.email)
+  const finalResponse = NextResponse.next({ request: { headers: requestHeaders } })
+  for (const cookie of response.cookies.getAll()) finalResponse.cookies.set(cookie)
+  return withHeaders(finalResponse)
 }
 
 export const config = {

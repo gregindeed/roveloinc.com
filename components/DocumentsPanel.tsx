@@ -252,7 +252,9 @@ export default function DocumentsPanel({
           {allowUpload ? 'No documents in this folder yet. Upload one above.' : 'Nothing here.'}
         </div>
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <>
+        {/* Tablet / desktop: table */}
+        <div className="hidden sm:block overflow-x-auto border border-gray-200 rounded-lg">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-gray-50">
@@ -271,7 +273,7 @@ export default function DocumentsPanel({
                 return (
                   <tr key={doc.id} className="border-t border-gray-100 align-top">
                     <td className="px-2.5 py-1.5">
-                      <div className="max-w-[360px]">
+                      <div className="max-w-[200px] sm:max-w-[360px]">
                         <div className="text-gray-900 truncate" title={doc.name}>{doc.name}</div>
                         {doc.ai_summary ? (
                           <div
@@ -325,6 +327,72 @@ export default function DocumentsPanel({
             </tbody>
           </table>
         </div>
+
+        {/* Mobile: stacked cards — thumb-friendly, no sideways scroll to reach actions */}
+        <div className="sm:hidden space-y-2.5">
+          {docs.map((doc) => {
+            const d = daysUntil(doc.expires_date)
+            const expiring = d !== null && d <= 30
+            return (
+              <div key={doc.id} className="rounded-xl border border-gray-200 p-3.5">
+                <div className="text-sm font-medium text-gray-900 break-words">{doc.name}</div>
+                {doc.ai_summary ? (
+                  <div
+                    className="text-[12px] text-gray-500 mt-1 leading-snug"
+                    style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                  >
+                    {doc.ai_summary}
+                  </div>
+                ) : doc.ai_status === 'pending' ? (
+                  <div className="text-[12px] text-gray-400 mt-1 italic">Reading…</div>
+                ) : null}
+
+                <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                  <span>{DOCUMENT_TYPE_LABELS[doc.doc_type] ?? doc.doc_type}</span>
+                  {doc.agency && <span>· {AGENCY_LABELS[doc.agency]}</span>}
+                  {showPeriod && (
+                    <span>· {monthLabel(doc.period_month)}{doc.period_year ? ` ${doc.period_year}` : ''}</span>
+                  )}
+                  {showPeriod && doc.account_ref && <span className="tabular-nums">· ••{doc.account_ref}</span>}
+                  {doc.expires_date && (
+                    <span className={expiring ? 'text-amber-700 font-medium' : ''}>
+                      · Exp {fmtDate(doc.expires_date)}{d !== null && d < 0 ? ' (expired)' : ''}
+                    </span>
+                  )}
+                  <span>· Added {fmtDate(doc.created_at.slice(0, 10))}</span>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+                  {showPeriod && slug && (
+                    <button
+                      onClick={() => reread(doc)}
+                      disabled={pending && rereadId === doc.id}
+                      className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {pending && rereadId === doc.id ? 'Reading…' : 'Re-read'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => download(doc)}
+                    className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                  >
+                    Download
+                  </button>
+                  {canDelete(doc) && (
+                    <button
+                      onClick={() => remove(doc)}
+                      disabled={busy}
+                      className="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 ml-auto"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        </>
       )}
     </div>
   )

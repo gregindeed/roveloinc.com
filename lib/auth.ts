@@ -1,6 +1,8 @@
 import { cache } from 'react'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { VIEWER_ID_HEADER, VIEWER_EMAIL_HEADER } from '@/lib/authHeaders'
 import { type Locale, isLocale } from '@/lib/i18n'
 
 export type Role = 'admin' | 'collaborator' | 'client' | null
@@ -36,21 +38,38 @@ export type Viewer = {
 // staleness — each new request re-resolves.
 export const getViewer = cache(async function getViewer(): Promise<Viewer | null> {
   const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return null
+
+  // Fast path: on a guarded route the middleware has ALREADY validated this
+  // request's session and passed the identity down via a trusted header (see
+  // lib/authHeaders.ts). Trust it and skip a second getUser() network round-trip.
+  // Off guarded routes the header is absent, so validate the token ourselves.
+  const h = headers()
+  const trustedId = h.get(VIEWER_ID_HEADER)
+  let userId: string
+  let email: string | null
+  if (trustedId) {
+    userId = trustedId
+    email = h.get(VIEWER_EMAIL_HEADER)
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return null
+    userId = user.id
+    email = user.email ?? null
+  }
+
   const [{ data: p }, { data: mems }] = await Promise.all([
-    supabase.from('profiles').select('role, is_owner, client_id, org_id, display_name, handle, avatar_url, locale').eq('id', user.id).single(),
-    supabase.from('memberships').select('org_id, role, organizations(name, is_platform)').eq('user_id', user.id),
+    supabase.from('profiles').select('role, is_owner, client_id, org_id, display_name, handle, avatar_url, locale').eq('id', userId).single(),
+    supabase.from('memberships').select('org_id, role, organizations(name, is_platform)').eq('user_id', userId),
   ])
   const firms: FirmMembership[] = (mems ?? []).map((m) => {
     const o = (m.organizations ?? null) as { name?: string; is_platform?: boolean } | null
     return { orgId: m.org_id as string, name: o?.name ?? '', role: m.role as string, isPlatform: !!o?.is_platform }
   })
   return {
-    userId: user.id,
-    email: user.email ?? null,
+    userId,
+    email,
     displayName: (p?.display_name as string | null) ?? null,
     handle: (p?.handle as string | null) ?? null,
     avatarUrl: (p?.avatar_url as string | null) ?? null,

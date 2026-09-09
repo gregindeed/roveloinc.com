@@ -13,14 +13,15 @@ export default function PortalTabs() {
     { href: '/portal/settings', label: 'Settings' },
   ]
   return (
-    <nav className="flex gap-1 border-b border-gray-200 mt-4">
+    // Scrolls sideways on a narrow phone instead of wrapping/clipping the tabs.
+    <nav className="flex gap-1 border-b border-gray-200 mt-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((t) => {
         const active = t.exact ? path === t.href : path.startsWith(t.href)
         return (
           <Link
             key={t.href}
             href={t.href}
-            className={`px-3 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${
               active
                 ? 'border-gray-900 text-gray-900'
                 : 'border-transparent text-gray-500 hover:text-gray-900'

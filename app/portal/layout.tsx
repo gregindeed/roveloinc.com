@@ -27,7 +27,7 @@ export default async function PortalLayout({ children }: { children: React.React
     return (
       <div className="min-h-screen bg-white">
         <AuthHeader label="Client Portal" email={user?.email} />
-        <main className="max-w-5xl mx-auto px-6 py-10">
+        <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <p className="text-sm text-gray-600">
             Your account isn&apos;t linked to a client yet. Please contact Rovelo Inc.
           </p>
@@ -45,7 +45,7 @@ export default async function PortalLayout({ children }: { children: React.React
   return (
     <div className="min-h-screen bg-white">
       <AuthHeader label="Client Portal" email={user?.email} />
-      <main className="max-w-5xl mx-auto px-6 py-10">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div>
           <h1 className="text-xl font-bold text-gray-900">{c?.name ?? 'Your business'}</h1>
           <p className="text-sm text-gray-600 mt-0.5">

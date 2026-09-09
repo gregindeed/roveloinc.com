@@ -46,7 +46,16 @@ export const metadata: Metadata = {
     'San Diego bookkeeping',
   ],
   authors: [{ name: 'Rovelo Inc' }],
-  icons: { icon: '/rovelo_icon.png', apple: '/rovelo_icon.png' },
+  // Small dedicated icons for the tab/home-screen (the 1024px rovelo_icon.png is
+  // kept below only for social/OpenGraph cards, where a large image is wanted).
+  icons: {
+    icon: [
+      { url: '/favicon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-48.png', sizes: '48x48', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
   robots: { index: true, follow: true },
   // Search Console ownership is verified via Cloudflare DNS on the domain
   // property (sc-domain:roveloinc.com), so no HTML-tag verification is needed here.
