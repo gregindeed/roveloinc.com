@@ -15,7 +15,7 @@ export default function LanguageSwitch() {
     <div
       role="group"
       aria-label="Language"
-      className={`inline-flex items-center rounded-full bg-gray-100 p-0.5 text-[11px] font-medium ${pending ? 'opacity-60' : ''}`}
+      className={`inline-flex items-center rounded-full bg-gray-100 p-px text-[10px] font-semibold leading-none ${pending ? 'opacity-60' : ''}`}
     >
       {LOCALES.map((l: Locale) => {
         const active = l === locale
@@ -26,11 +26,11 @@ export default function LanguageSwitch() {
             onClick={() => !active && start(() => setLocale(l))}
             aria-pressed={active}
             title={LOCALE_LABELS[l]}
-            className={`px-2 py-0.5 rounded-full transition-colors ${
+            className={`px-1.5 py-1 rounded-full transition-colors ${
               active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-700'
             }`}
           >
-            {l.toUpperCase()}
+            {l === 'es' ? 'SP' : l.toUpperCase()}
           </button>
         )
       })}

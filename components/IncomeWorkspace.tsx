@@ -8,15 +8,21 @@ import {
   delete1099,
   addScheduleC,
   deleteScheduleC,
+  addScheduleE,
+  deleteScheduleE,
 } from '@/app/admin/clients/[slug]/[year]/income-actions'
 import {
   FORM_1099_TYPES,
   form1099Short,
   SCHEDULE_C_EXPENSES,
+  SCHEDULE_E_EXPENSES,
+  PROPERTY_TYPES,
   scheduleCNet,
+  scheduleENet,
   type W2Income,
   type Income1099,
   type ScheduleC,
+  type ScheduleE,
 } from '@/lib/income'
 
 const money = (n: number | null | undefined) =>
@@ -62,16 +68,25 @@ export default function IncomeWorkspace({
   w2,
   f1099,
   scheduleC,
+  scheduleE,
 }: {
   slug: string
   year: number
   w2: W2Income[]
   f1099: Income1099[]
   scheduleC: ScheduleC[]
+  scheduleE: ScheduleE[]
 }) {
   const [openW2, setOpenW2] = useState(false)
   const [open1099, setOpen1099] = useState(false)
   const [openSC, setOpenSC] = useState(false)
+  const [openSE, setOpenSE] = useState(false)
+
+  // Live Schedule E net as the user fills the add form.
+  const [seRents, setSeRents] = useState(0)
+  const [seExp, setSeExp] = useState<Record<string, number>>({})
+  const seExpTotal = Object.values(seExp).reduce((a, b) => a + (b || 0), 0)
+  const seNetPreview = seRents - seExpTotal
 
   // Live Schedule C net as the user fills the add form.
   const [scGross, setScGross] = useState(0)
@@ -351,6 +366,112 @@ export default function IncomeWorkspace({
                 </span>
                 <button className="rounded-md bg-gray-900 text-white text-sm font-medium px-3.5 py-1.5 hover:bg-gray-800">
                   Save Schedule C
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </Section>
+
+      {/* ── Schedule E — rentals ──────────────────────────────────────────── */}
+      <Section
+        title="Schedule E — rentals & royalties"
+        hint="Rental or royalty properties. Net income (rents − expenses, including depreciation) flows into total income; a loss offsets other income subject to passive-loss limits."
+      >
+        {scheduleE.length > 0 ? (
+          <div className="divide-y divide-gray-100 mb-3">
+            {scheduleE.map((r) => {
+              const net = scheduleENet(r)
+              return (
+                <div key={r.id} className="flex items-center justify-between py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <span className="font-medium text-gray-900">{r.property_label}</span>
+                    {r.property_type && <span className="text-gray-500"> · {r.property_type}</span>}
+                    <span className="block text-xs text-gray-400">Rents {money(r.rents_received)}</span>
+                  </div>
+                  <div className="flex items-center gap-4 whitespace-nowrap">
+                    <span className={`tabular-nums font-medium ${net < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                      Net {money(net)}
+                    </span>
+                    <form action={deleteScheduleE.bind(null, slug, year, r.id)}>
+                      <button className="text-xs text-red-600 hover:text-red-700">Remove</button>
+                    </form>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 mb-3">No rental properties entered.</p>
+        )}
+
+        <div className="border-t border-gray-100 pt-3">
+          <AddToggle open={openSE} onClick={() => setOpenSE((v) => !v)} label="Add a property" />
+          {openSE && (
+            <form action={addScheduleE.bind(null, slug, year)} className="mt-3 space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="col-span-2 sm:col-span-2">
+                  <label className={labelCls}>Property name</label>
+                  <input name="property_label" required placeholder="123 Main St" className={`${inputCls} w-full`} />
+                </div>
+                <div>
+                  <label className={labelCls}>Type</label>
+                  <select name="property_type" defaultValue="residential" className={`${inputCls} w-full bg-white`}>
+                    {PROPERTY_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-2">
+                  <label className={labelCls}>Address</label>
+                  <input name="address" className={`${inputCls} w-full`} />
+                </div>
+                <div>
+                  <label className={labelCls}>Rents received</label>
+                  <input
+                    name="rents_received"
+                    inputMode="decimal"
+                    onChange={(e) => setSeRents(Number(e.target.value.replace(/[$,\s]/g, '')) || 0)}
+                    className={`${inputCls} w-full`}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className={labelCls}>Expenses</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {SCHEDULE_E_EXPENSES.map((e) => (
+                    <div key={e.key} className="flex items-center gap-2">
+                      <label className="text-xs text-gray-600 w-28 shrink-0 truncate" title={e.label}>
+                        {e.label}
+                      </label>
+                      <input
+                        name={`exp_${e.key}`}
+                        inputMode="decimal"
+                        onChange={(ev) =>
+                          setSeExp((prev) => ({
+                            ...prev,
+                            [e.key]: Number(ev.target.value.replace(/[$,\s]/g, '')) || 0,
+                          }))
+                        }
+                        className={`${inputCls} w-full`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                <span className="text-sm text-gray-500">
+                  Preview net:{' '}
+                  <span className={`font-semibold tabular-nums ${seNetPreview < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                    {money(seNetPreview)}
+                  </span>
+                </span>
+                <button className="rounded-md bg-gray-900 text-white text-sm font-medium px-3.5 py-1.5 hover:bg-gray-800">
+                  Save property
                 </button>
               </div>
             </form>

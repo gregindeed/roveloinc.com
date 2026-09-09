@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getViewer } from '@/lib/auth'
 import { getClientYears } from '@/lib/yearsServer'
+import { recordEntityView } from '@/lib/recentsServer'
 import { getLocale } from '@/lib/i18n-server'
 import { t } from '@/lib/i18n'
 import OpenYearControl from '@/components/OpenYearControl'
@@ -21,6 +22,10 @@ export default async function EntityYearPicker({ params }: { params: { slug: str
   const locale = getLocale()
   const viewer = await getViewer()
   const canManage = viewer?.role === 'admin'
+  // Record this open in the viewer's recents (best-effort; workers only).
+  if (viewer && (viewer.role === 'admin' || viewer.role === 'collaborator')) {
+    await recordEntityView(supabase, viewer.userId, c.id)
+  }
   const years = await getClientYears(supabase, c.id)
 
   return (

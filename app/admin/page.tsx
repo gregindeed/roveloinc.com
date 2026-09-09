@@ -2,9 +2,10 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AuthHeader from '@/components/AuthHeader'
-import ClientRoster, { type RosterRow } from '@/components/ClientRoster'
-import FirmMenu from '@/components/FirmMenu'
+import { type RosterRow } from '@/components/ClientRoster'
+import AdminDashboard, { type FirmLite } from '@/components/AdminDashboard'
 import { getViewer } from '@/lib/auth'
+import { getRecentEntities } from '@/lib/recentsServer'
 import { entityPresence } from '@/lib/presenceServer'
 import { deriveAttention, type StateRow } from '@/lib/brief'
 import { ENTITY_TYPE_LABELS, type Client, type EntityType, type Organization } from '@/lib/types'
@@ -114,21 +115,34 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   }
 
   const toRows = (cs: Client[]): RosterRow[] =>
-    cs.map((c) => ({
-      id: c.id,
-      slug: c.slug,
-      name: c.name,
-      sub: c.owner_name ?? c.legal_name ?? c.slug,
-      typeLabel: c.entity_type ? ENTITY_TYPE_LABELS[c.entity_type as EntityType] : null,
-      ein: c.ein,
-      status: c.status,
-      readiness: readinessByClient[c.id],
-      overdue: overdueByClient[c.id] ?? 0,
-      enrolled: hasOb.has(c.id),
-      attention: attentionByClient.get(c.id),
-      presence: presenceByClient.get(c.id),
-      year: activeYear(c.id),
-    }))
+    cs.map((c) => {
+      const isIndiv = c.kind === 'individual'
+      // Individuals have no entity type or EIN — describe the person instead:
+      // residency in the "type" slot, ITIN/SSN in the "EIN" slot.
+      const typeLabel = isIndiv
+        ? t(locale, c.residency === 'nonresident' ? 'admin.nonresident' : 'admin.resident')
+        : c.entity_type
+          ? ENTITY_TYPE_LABELS[c.entity_type as EntityType]
+          : null
+      const idLabel = isIndiv ? (c.tax_id_type ? c.tax_id_type.toUpperCase() : null) : c.ein
+      return {
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        sub: c.owner_name ?? c.legal_name ?? c.slug,
+        typeLabel,
+        ein: idLabel,
+        status: c.status,
+        readiness: readinessByClient[c.id],
+        overdue: overdueByClient[c.id] ?? 0,
+        enrolled: hasOb.has(c.id),
+        attention: attentionByClient.get(c.id),
+        presence: presenceByClient.get(c.id),
+        year: activeYear(c.id),
+        orgId: c.org_id ?? null,
+        kind: isIndiv ? 'individual' : 'business',
+      }
+    })
 
   const byOrg: Record<string, Client[]> = {}
   for (const c of list) (byOrg[c.org_id ?? 'none'] ??= []).push(c)
@@ -139,6 +153,9 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   // so they don't silently vanish from the dashboard.
   const shownOrgIds = new Set(firmsWithRows.map((f) => f.id))
   const sharedRows = list.filter((c) => !c.org_id || !shownOrgIds.has(c.org_id))
+
+  const firmLites: FirmLite[] = firmsWithRows.map((f) => ({ id: f.id, name: f.name, isPlatform: !!f.is_platform }))
+  const recents = user ? await getRecentEntities(supabase, user.id, 6) : []
 
   // Top-nav actions: New Firm is the highest-level action (platform only);
   // partner managers get a direct New Account instead.
@@ -171,7 +188,7 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
           </div>
         )}
 
-        {list.length === 0 ? (
+        {list.length === 0 && archived.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 p-10 text-center">
             <p className="text-sm text-gray-500">{t(locale, 'admin.noAccounts')}</p>
             {isPlatform ? (
@@ -185,56 +202,15 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
             ) : null}
           </div>
         ) : (
-          <div className="space-y-8">
-            {firmsWithRows.map((f) => {
-              const rows = byOrg[f.id] ?? []
-              return (
-                <div key={f.id}>
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-sm font-semibold text-gray-900">
-                      {f.name}
-                      {f.is_platform && (
-                        <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-violet-600">{t(locale, 'admin.yourFirm')}</span>
-                      )}
-                      <span className="ml-2 text-xs font-normal text-gray-400">
-                        {t(locale, rows.length === 1 ? 'admin.accountsOne' : 'admin.accountsOther', { n: rows.length })}
-                      </span>
-                    </h2>
-                    {viewer?.role === 'admin' && <FirmMenu firmId={f.id} canManage={isPlatform} />}
-                  </div>
-                  <ClientRoster rows={toRows(rows)} />
-                </div>
-              )
-            })}
-
-            {sharedRows.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-sm font-semibold text-gray-900">
-                    {t(locale, 'admin.sharedWithYou')}
-                    <span className="ml-2 text-xs font-normal text-gray-400">
-                      {t(locale, sharedRows.length === 1 ? 'admin.accountsOne' : 'admin.accountsOther', { n: sharedRows.length })}
-                    </span>
-                  </h2>
-                </div>
-                <ClientRoster rows={toRows(sharedRows)} />
-              </div>
-            )}
-          </div>
-        )}
-
-        {archived.length > 0 && (
-          <details className="mt-10 group">
-            <summary className="cursor-pointer text-sm font-semibold text-gray-500 hover:text-gray-800 select-none">
-              {t(locale, 'admin.archived')} · {archived.length}
-            </summary>
-            <p className="text-xs text-gray-400 mt-1 mb-3">
-              {t(locale, 'admin.archivedHint')}
-            </p>
-            <div className="opacity-70">
-              <ClientRoster rows={toRows(archived)} />
-            </div>
-          </details>
+          <AdminDashboard
+            firms={firmLites}
+            rows={toRows(list)}
+            sharedRows={toRows(sharedRows)}
+            archivedRows={toRows(archived)}
+            recents={recents}
+            viewerRole={viewer?.role ?? null}
+            isPlatform={isPlatform}
+          />
         )}
       </main>
     </div>

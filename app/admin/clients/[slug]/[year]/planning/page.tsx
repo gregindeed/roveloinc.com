@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PlanningWorkspace from '@/components/PlanningWorkspace'
-import { computeIncome, type W2Income, type Income1099, type ScheduleC } from '@/lib/income'
+import { computeIncome, type W2Income, type Income1099, type ScheduleC, type ScheduleE } from '@/lib/income'
 import { computeTaxPosition, asFilingStatus, asResidency, type TaxPositionInput } from '@/lib/tax'
 import { buildTaxPlan } from '@/lib/taxPlan'
 import { computeCaTax, isCaResident } from '@/lib/caTax'
@@ -21,19 +21,31 @@ export default async function PlanningPage({ params }: { params: { slug: string;
   // Planning is an individual-only surface for now (personal tax position).
   if (c.kind !== 'individual') redirect(`/admin/clients/${c.slug}/${year}`)
 
-  const [{ data: w2Rows }, { data: f1099Rows }, { data: scRows }] = await Promise.all([
+  const [{ data: w2Rows }, { data: f1099Rows }, { data: scRows }, { data: seRows }, { data: dedRow }] = await Promise.all([
     supabase.from('w2_income').select('*').eq('client_id', c.id).eq('year', year),
     supabase.from('income_1099').select('*').eq('client_id', c.id).eq('year', year),
     supabase.from('schedule_c').select('*').eq('client_id', c.id).eq('year', year),
+    supabase.from('schedule_e').select('*').eq('client_id', c.id).eq('year', year),
+    supabase.from('tax_deductions').select('*').eq('client_id', c.id).eq('year', year).maybeSingle(),
   ])
 
   const w2 = (w2Rows ?? []) as W2Income[]
   const f1099 = (f1099Rows ?? []) as Income1099[]
   const scheduleC = (scRows ?? []) as ScheduleC[]
-  const totals = computeIncome(w2, f1099, scheduleC)
+  const scheduleE = (seRows ?? []) as ScheduleE[]
+  const totals = computeIncome(w2, f1099, scheduleC, scheduleE)
   const w2SsWages = w2.reduce((a, r) => a + (r.ss_wages ?? r.wages ?? 0), 0)
 
   const hasIncome = totals.totalIncome !== 0 || totals.totalWithholding !== 0
+
+  const itemized = {
+    medical: dedRow?.medical ?? 0,
+    salt: dedRow?.state_local_taxes ?? 0,
+    mortgageInterest: dedRow?.mortgage_interest ?? 0,
+    charitable: dedRow?.charitable ?? 0,
+    other: dedRow?.other_itemized ?? 0,
+  }
+  const credits = dedRow?.estimated_credits ?? 0
 
   const residency = asResidency(c.residency)
   const treatyRate = c.treaty_dividend_rate ?? null
@@ -44,11 +56,14 @@ export default async function PlanningPage({ params }: { params: { slug: string;
     w2SsWages,
     otherIncome: totals.f1099Ordinary, // pure ordinary (dividends/gains handled separately)
     scheduleCNet: totals.scheduleCNet,
+    rentalNet: totals.scheduleENet,
     qualifiedDividends: totals.dividends,
     ordinaryDividends: totals.ordinaryDividends,
     longTermGains: totals.longTermGains,
     shortTermGains: totals.shortTermGains,
     withholding: totals.totalWithholding,
+    itemized,
+    credits,
     residency,
     treatyDividendRate: treatyRate,
   }
@@ -108,6 +123,7 @@ export default async function PlanningPage({ params }: { params: { slug: string;
           longTermGains={totals.longTermGains}
           shortTermGains={totals.shortTermGains}
           scheduleCNet={totals.scheduleCNet}
+          rentalNet={totals.scheduleENet}
         />
       ) : (
         <div className="rounded-xl border border-dashed border-gray-300 p-6">

@@ -352,6 +352,11 @@ export default function GuidedOnboarding({
           {/* Structured facts */}
           <div className="rounded-2xl border border-gray-200 divide-y divide-gray-100">
             {questions.map((q) => {
+              // Only show facts that were actually answered AND apply to this
+              // account kind — so an individual never shows business-only rows
+              // (employees, accounting basis, entity type).
+              if (facts[q.key] === undefined) return null
+              if (q.appliesWhen && !q.appliesWhen(facts)) return null
               // Show the specific subtype (e.g. "General Partnership (GP)") in place
               // of the core type when the operator chose an extended option.
               const s =

@@ -32,3 +32,27 @@ export function avatarColor(seed: string): { bg: string; fg: string } {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
   return PALETTE[h % PALETTE.length]
 }
+
+// A stable @handle for a user, without the leading @. Prefers the handle they
+// set; otherwise derives a clean default from their display name, then their
+// email local part. Always returns something usable so the UI never falls back
+// to a raw email address. Pure — safe in server and client.
+export function defaultHandle(opts: {
+  handle?: string | null
+  displayName?: string | null
+  email?: string | null
+}): string {
+  const set = (opts.handle || '').trim().replace(/^@+/, '')
+  if (set) return set
+  const source =
+    (opts.displayName && opts.displayName.trim()) ||
+    (opts.email ? opts.email.split('@')[0] : '') ||
+    'user'
+  const slug = source
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, "") // strip accents
+    .replace(/[^a-z0-9]+/g, '')
+    .slice(0, 24)
+  return slug || 'user'
+}

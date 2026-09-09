@@ -20,6 +20,10 @@ export type RosterRow = {
   attention?: { level: 'critical' | 'warning' | 'info'; reasons: string[] }
   presence?: PresenceUser[]
   year?: number | null
+  // Firm this entity belongs to, and whether it's a person or a business — used
+  // by the dashboard control bar to scope and filter. Not shown directly here.
+  orgId?: string | null
+  kind?: 'business' | 'individual'
 }
 
 // Surface = neutral identity only. No scores, no severity colors — an entity's
@@ -57,17 +61,22 @@ function ReadinessLine({ score }: { score: number | undefined }) {
   )
 }
 
-export default function ClientRoster({ rows }: { rows: RosterRow[] }) {
+export default function ClientRoster({ rows, mode = 'mixed' }: { rows: RosterRow[]; mode?: 'mixed' | 'individual' }) {
   const t = useT()
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }))
+
+  // For an individuals-only view the two right columns describe a person, not a
+  // company — so relabel the headers. The cell values are prepared upstream.
+  const col2 = mode === 'individual' ? t('admin.residencyCol') : t('admin.type')
+  const col3 = mode === 'individual' ? t('admin.taxId') : t('admin.ein')
 
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
       <div className={`${COLS} px-4 py-2 bg-gray-50/70 border-b border-gray-200`}>
         <div className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{t('admin.account')}</div>
-        <div className="hidden md:block text-[10px] font-medium uppercase tracking-wide text-gray-400">{t('admin.type')}</div>
-        <div className="hidden md:block text-[10px] font-medium uppercase tracking-wide text-gray-400">{t('admin.ein')}</div>
+        <div className="hidden md:block text-[10px] font-medium uppercase tracking-wide text-gray-400">{col2}</div>
+        <div className="hidden md:block text-[10px] font-medium uppercase tracking-wide text-gray-400">{col3}</div>
         <div />
       </div>
 

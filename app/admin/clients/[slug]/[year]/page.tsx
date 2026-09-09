@@ -8,7 +8,7 @@ import { parsePeriod, inPeriod } from '@/lib/period'
 import Link from 'next/link'
 import { getLocale } from '@/lib/i18n-server'
 import { localizedAssessment } from '@/lib/assessmentL10n'
-import { computeIncome, type W2Income, type Income1099, type ScheduleC } from '@/lib/income'
+import { computeIncome, type W2Income, type Income1099, type ScheduleC, type ScheduleE } from '@/lib/income'
 import type { Client, Deposit, CheckingExpense, CCTransaction, Account } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -74,15 +74,17 @@ export default async function Overview({
   // overview shows a real income picture instead of a placeholder.
   let incomeTotals: ReturnType<typeof computeIncome> | null = null
   if (c.kind === 'individual') {
-    const [{ data: w2Rows }, { data: f1099Rows }, { data: scRows }] = await Promise.all([
+    const [{ data: w2Rows }, { data: f1099Rows }, { data: scRows }, { data: seRows }] = await Promise.all([
       supabase.from('w2_income').select('*').eq('client_id', c.id).eq('year', year),
       supabase.from('income_1099').select('*').eq('client_id', c.id).eq('year', year),
       supabase.from('schedule_c').select('*').eq('client_id', c.id).eq('year', year),
+      supabase.from('schedule_e').select('*').eq('client_id', c.id).eq('year', year),
     ])
     incomeTotals = computeIncome(
       (w2Rows ?? []) as W2Income[],
       (f1099Rows ?? []) as Income1099[],
-      (scRows ?? []) as ScheduleC[]
+      (scRows ?? []) as ScheduleC[],
+      (seRows ?? []) as ScheduleE[]
     )
   }
   const usd = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })

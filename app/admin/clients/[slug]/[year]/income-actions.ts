@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth'
-import { SCHEDULE_C_EXPENSES } from '@/lib/income'
+import { SCHEDULE_C_EXPENSES, SCHEDULE_E_EXPENSES } from '@/lib/income'
 
 const back = (slug: string, year: string | number, key: 'ok' | 'warn', msg: string): never =>
   redirect(`/admin/clients/${slug}/${year}/income?${key}=${encodeURIComponent(msg)}`)
@@ -136,4 +136,70 @@ export async function deleteScheduleC(slug: string, year: number, id: string) {
   if (error) back(slug, year, 'warn', `Could not remove: ${error.message}`)
   revalidatePath(`/admin/clients/${slug}/${year}/income`)
   back(slug, year, 'ok', 'Schedule C removed.')
+}
+
+// ── Schedule E — rental / royalty ─────────────────────────────────────────────
+export async function addScheduleE(slug: string, year: number, formData: FormData) {
+  await requireAdmin()
+  const supabase = createClient()
+  const clientId = await clientIdForSlug(supabase, slug)
+  if (!clientId) back(slug, year, 'warn', 'Client not found.')
+
+  const label = String(formData.get('property_label') || '').trim()
+  if (!label) back(slug, year, 'warn', 'Property name is required.')
+
+  const expenses: Record<string, number> = {}
+  for (const { key } of SCHEDULE_E_EXPENSES) {
+    const v = num(formData.get(`exp_${key}`))
+    if (v && v !== 0) expenses[key] = v
+  }
+
+  const { error } = await supabase.from('schedule_e').insert({
+    client_id: clientId,
+    year,
+    property_label: label,
+    property_type: String(formData.get('property_type') || 'residential').trim() || 'residential',
+    address: String(formData.get('address') || '').trim() || null,
+    rents_received: num(formData.get('rents_received'), true),
+    expenses,
+  })
+  if (error) back(slug, year, 'warn', `Could not add property: ${error.message}`)
+  revalidatePath(`/admin/clients/${slug}/${year}/income`)
+  back(slug, year, 'ok', 'Rental property added.')
+}
+
+export async function deleteScheduleE(slug: string, year: number, id: string) {
+  await requireAdmin()
+  const supabase = createClient()
+  const { error } = await supabase.from('schedule_e').delete().eq('id', id)
+  if (error) back(slug, year, 'warn', `Could not remove: ${error.message}`)
+  revalidatePath(`/admin/clients/${slug}/${year}/income`)
+  back(slug, year, 'ok', 'Rental property removed.')
+}
+
+// ── Itemized deductions + credits (one row per client per year) ──────────────
+export async function setDeductions(slug: string, year: number, formData: FormData) {
+  await requireAdmin()
+  const supabase = createClient()
+  const clientId = await clientIdForSlug(supabase, slug)
+  if (!clientId) back(slug, year, 'warn', 'Client not found.')
+
+  const { error } = await supabase.from('tax_deductions').upsert(
+    {
+      client_id: clientId,
+      year,
+      medical: num(formData.get('medical'), true),
+      state_local_taxes: num(formData.get('state_local_taxes'), true),
+      mortgage_interest: num(formData.get('mortgage_interest'), true),
+      charitable: num(formData.get('charitable'), true),
+      other_itemized: num(formData.get('other_itemized'), true),
+      estimated_credits: num(formData.get('estimated_credits'), true),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'client_id,year' }
+  )
+  if (error) back(slug, year, 'warn', `Could not save deductions: ${error.message}`)
+  revalidatePath(`/admin/clients/${slug}/${year}/income`)
+  revalidatePath(`/admin/clients/${slug}/${year}/planning`)
+  back(slug, year, 'ok', 'Deductions saved.')
 }

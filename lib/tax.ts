@@ -133,6 +133,43 @@ const SE_NET_FACTOR = 0.9235
 const SS_RATE = 0.124
 const MEDICARE_RATE = 0.029
 const NR_DEFAULT_FDAP_RATE = 0.3 // flat 30% on US-source FDAP when no treaty is claimed
+const MEDICAL_AGI_FLOOR = 0.075 // medical deductible only above 7.5% of AGI
+
+// SALT deduction cap by year. Pre-OBBBA 2024 is a flat $10k; 2025+ raise the cap
+// (OBBBA) with a 30%-of-MAGI-over-threshold phase-down to a $10k floor. MFS = half.
+type SaltRule = { cap: number; mfsCap: number; threshold: number; mfsThreshold: number; floor: number; mfsFloor: number }
+const SALT: Record<number, SaltRule> = {
+  2024: { cap: 10000, mfsCap: 5000, threshold: INF, mfsThreshold: INF, floor: 10000, mfsFloor: 5000 },
+  2025: { cap: 40000, mfsCap: 20000, threshold: 500000, mfsThreshold: 250000, floor: 10000, mfsFloor: 5000 },
+  2026: { cap: 40400, mfsCap: 20200, threshold: 505000, mfsThreshold: 252500, floor: 10000, mfsFloor: 5000 },
+}
+
+function saltCapFor(year: number, fs: FilingStatus, magi: number): number {
+  const y = SALT[year] ? year : resolveYear(year).year
+  const r = SALT[y]
+  const isMfs = fs === 'mfs'
+  const base = isMfs ? r.mfsCap : r.cap
+  const threshold = isMfs ? r.mfsThreshold : r.threshold
+  const floor = isMfs ? r.mfsFloor : r.floor
+  if (magi <= threshold) return base
+  return Math.max(floor, base - 0.3 * (magi - threshold))
+}
+
+export type ItemizedInput = {
+  medical?: number
+  salt?: number // state & local taxes paid (pre-cap)
+  mortgageInterest?: number
+  charitable?: number
+  other?: number
+}
+
+// Total itemized deductions given AGI (for the medical floor and SALT MAGI).
+function itemizedTotalFor(year: number, fs: FilingStatus, agi: number, it: ItemizedInput | undefined): number {
+  if (!it) return 0
+  const medical = Math.max(0, (it.medical ?? 0) - MEDICAL_AGI_FLOOR * agi)
+  const salt = Math.min(it.salt ?? 0, saltCapFor(year, fs, agi))
+  return medical + salt + (it.mortgageInterest ?? 0) + (it.charitable ?? 0) + (it.other ?? 0)
+}
 
 export type TaxPositionInput = {
   year: number
@@ -141,12 +178,18 @@ export type TaxPositionInput = {
   w2SsWages: number
   otherIncome: number // pure ordinary 1099 (interest, NEC, etc. — no dividends/gains)
   scheduleCNet: number
+  rentalNet?: number // Schedule E net rental/royalty income → ordinary (resident), ECI (NR)
   qualifiedDividends?: number // 1099-DIV qualified (e.g. C-corp distributions) → cap-gains rates
   ordinaryDividends?: number // ordinary / REIT dividends → ordinary rates (resident), FDAP (NR)
   longTermGains?: number // net long-term capital gain → cap-gains rates (resident), excluded (NR)
   shortTermGains?: number // net short-term capital gain → ordinary rates (resident), excluded (NR)
   withholding: number
   preTaxAdjustments?: number
+  // Itemized deductions (resident). When their total beats the standard
+  // deduction, the engine uses the greater. Undefined → standard deduction.
+  itemized?: ItemizedInput
+  // Manual total of tax credits (nonrefundable assumption — floors tax at 0).
+  credits?: number
   // Residency basis. 'nonresident' switches to 1040-NR treatment.
   residency?: Residency
   // For nonresidents: flat rate on US-source dividends (treaty rate, e.g. 0.10).
@@ -169,10 +212,14 @@ export type TaxPosition = {
   seTaxDeduction: number
   agi: number
   standardDeduction: number
+  itemizedTotal: number
+  usedItemized: boolean
+  deductionUsed: number // the greater of standard / itemized actually applied
   qbiDeduction: number
   qbiEstimated: boolean
   taxableIncome: number
   incomeTax: number // ordinary income tax (excludes SE and the dividend tax)
+  credits: number // credits applied against tax
   totalTax: number
   withholding: number
   balance: number
@@ -245,20 +292,23 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
   const ltGains = Math.max(0, inp.longTermGains ?? 0)
   const stGains = Math.max(0, inp.shortTermGains ?? 0)
   const scheduleCNet = Math.max(0, inp.scheduleCNet)
+  const rentalNet = inp.rentalNet ?? 0 // ordinary (can be a loss)
   const preTax = inp.preTaxAdjustments ?? 0
-  const totalIncome = inp.w2Wages + inp.otherIncome + inp.scheduleCNet + qualDiv + ordDiv + ltGains + stGains
+  const totalIncome = inp.w2Wages + inp.otherIncome + inp.scheduleCNet + rentalNet + qualDiv + ordDiv + ltGains + stGains
 
   // ── Nonresident alien — Form 1040-NR ───────────────────────────────────────
   if (residency === 'nonresident') {
     // Effectively-connected income taxed at graduated rates, no standard
     // deduction and no QBI. Nonresident aliens aren't subject to SE tax, and
     // their capital gains on securities are generally not US-taxed (excluded).
-    const eci = Math.max(0, inp.w2Wages + inp.otherIncome + inp.scheduleCNet - preTax)
+    const eci = Math.max(0, inp.w2Wages + inp.otherIncome + inp.scheduleCNet + rentalNet - preTax)
     const { tax: eciTax, slices } = taxOn(eci, brackets)
     const dividendRate = inp.treatyDividendRate != null ? inp.treatyDividendRate : NR_DEFAULT_FDAP_RATE
     const fdapDividends = qualDiv + ordDiv // all US-source dividends are FDAP
     const dividendTax = fdapDividends * dividendRate
-    const totalTax = eciTax + dividendTax
+    const taxBefore = eciTax + dividendTax
+    const creditsApplied = Math.min(inp.credits ?? 0, taxBefore)
+    const totalTax = taxBefore - creditsApplied
     const mb = marginalBand(eci, brackets)
     return {
       year, exactYear: exact, filingStatus: inp.filingStatus, residency,
@@ -269,9 +319,11 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
       seTax: 0, seTaxDeduction: 0,
       agi: round(eci + fdapDividends),
       standardDeduction: 0,
+      itemizedTotal: 0, usedItemized: false, deductionUsed: 0,
       qbiDeduction: 0, qbiEstimated: true,
       taxableIncome: round(eci + fdapDividends),
       incomeTax: round(eciTax),
+      credits: round(creditsApplied),
       totalTax: round(totalTax),
       withholding: round(inp.withholding),
       balance: round(totalTax - inp.withholding),
@@ -293,7 +345,10 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
 
   const agi = Math.max(0, totalIncome - seTaxDeduction - preTax)
   const standardDeduction = table.stdDeduction[inp.filingStatus]
-  const taxableBeforeQbi = Math.max(0, agi - standardDeduction)
+  const itemizedTotal = itemizedTotalFor(year, inp.filingStatus, agi, inp.itemized)
+  const usedItemized = itemizedTotal > standardDeduction
+  const deductionUsed = Math.max(standardDeduction, itemizedTotal)
+  const taxableBeforeQbi = Math.max(0, agi - deductionUsed)
 
   const qbiThreshold = brackets[3]?.upTo ?? INF
   let qbiDeduction = 0
@@ -317,7 +372,9 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
   const { tax: ordinaryTax, slices } = taxOn(ordinaryTaxable, brackets)
   const dividendTax = stackedGainsTax(ordinaryTaxable, gainsTaxable, ltcgFor(year, inp.filingStatus))
   const incomeTax = ordinaryTax + dividendTax
-  const totalTax = incomeTax + seTax
+  const taxBeforeCredits = incomeTax + seTax
+  const creditsApplied = Math.min(inp.credits ?? 0, taxBeforeCredits)
+  const totalTax = taxBeforeCredits - creditsApplied
   const balance = totalTax - inp.withholding
 
   const mb = marginalBand(ordinaryTaxable, brackets)
@@ -333,10 +390,14 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
     seTaxDeduction: round(seTaxDeduction),
     agi: round(agi),
     standardDeduction,
+    itemizedTotal: round(itemizedTotal),
+    usedItemized,
+    deductionUsed: round(deductionUsed),
     qbiDeduction: round(qbiDeduction),
     qbiEstimated,
     taxableIncome: round(taxableIncome),
     incomeTax: round(incomeTax),
+    credits: round(creditsApplied),
     totalTax: round(totalTax),
     withholding: round(inp.withholding),
     balance: round(balance),

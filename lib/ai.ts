@@ -171,6 +171,68 @@ export async function onboardingBrief(context: unknown, locale?: string): Promis
 }
 
 // ---------------------------------------------------------------------------
+// Individual onboarding brief — a person (1040 filer), not a business. The
+// Overseer READS and summarizes what they told us in its own words rather than
+// echoing the free-text back.
+// ---------------------------------------------------------------------------
+
+const INDIVIDUAL_ONBOARD_SYSTEM = `You are "the Overseer" — the tax and financial mind for Rovelo Inc. A new INDIVIDUAL (a person, a 1040 filer — NOT a business) has just been onboarded through a short guided interview. You are handed the facts they gave: name, filing status, home state, occupation or a free-text description they wrote about themselves, income sources, and tax year.
+
+Write two things, in first person, warm but precise:
+1) "read" — a natural 2-4 sentence portrait of this PERSON and their tax picture. READ and SUMMARIZE what they told you in YOUR OWN words — never copy their description back verbatim, and silently fix obvious typos. Capture who they are, their nationality/residency if mentioned, how they file (status + state), what they do, and where their income comes from (e.g. dividends from a company they own, wages, self-employment, rentals). If they flagged something to verify or a specific figure (e.g. a monthly dividend amount, or "confirm this for 2026"), note it naturally. Real prose, like a preparer who gets their situation.
+2) "handling" — 1-3 sentences on how you'll handle their return: which income you'll set up (W-2, 1099 / dividends, Schedule C, Schedule E rentals), any residency or tax-treaty angle you noticed (e.g. a nonresident whose dividends may get a reduced treaty rate), and that they can refine income and the tax profile any time.
+
+Only state facts you were given; never invent SSNs, ITINs, dates, or dollar figures they didn't mention. No headings, no bullet lists, no preamble.`
+
+const INDIVIDUAL_ONBOARD_TOOL = {
+  name: 'record_individual_brief',
+  description: "Record the Overseer's opening read and handling plan for a newly onboarded individual (1040 filer).",
+  input_schema: {
+    type: 'object',
+    properties: {
+      read: { type: 'string', description: 'A 2-4 sentence first-person portrait of the person and their tax situation.' },
+      handling: { type: 'string', description: "1-3 sentences on how you'll handle their return and income." },
+    },
+    required: ['read', 'handling'],
+  },
+}
+
+export async function individualOnboardingBrief(context: unknown, locale?: string): Promise<OnboardingBrief> {
+  const key = process.env.ANTHROPIC_API_KEY
+  if (!key) throw new Error('ANTHROPIC_API_KEY is not set')
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: overseerModel(),
+      max_tokens: 500,
+      system: INDIVIDUAL_ONBOARD_SYSTEM + localeInstruction(locale),
+      tools: [INDIVIDUAL_ONBOARD_TOOL],
+      tool_choice: { type: 'tool', name: 'record_individual_brief' },
+      messages: [
+        {
+          role: 'user',
+          content: `A new individual just finished onboarding. Here is what they told us (JSON):\n${JSON.stringify(context, null, 2)}\n\nRecord your opening read and handling plan — summarize in your own words, don't echo their text.`,
+        },
+      ],
+    }),
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    throw new Error(`Anthropic API ${res.status}: ${t.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  const blocks = (data?.content ?? []) as { type?: string; input?: unknown }[]
+  const tool = blocks.find((b) => b.type === 'tool_use')
+  const input = (tool?.input ?? {}) as Record<string, unknown>
+  const read = typeof input.read === 'string' ? input.read.trim() : ''
+  const handling = typeof input.handling === 'string' ? input.handling.trim() : ''
+  if (!read && !handling) throw new Error('No brief returned.')
+  return { read, handling }
+}
+
+// ---------------------------------------------------------------------------
 // Onboarding revision — the operator replies to the Overseer's read on the
 // review step ("actually it's an S-corp in Texas"). The Overseer acknowledges,
 // corrects any facts it got wrong, and rewrites its read/handling.

@@ -49,6 +49,27 @@ export type ScheduleC = {
   created_at: string
 }
 
+export type ScheduleE = {
+  id: string
+  client_id: string
+  year: number
+  property_label: string
+  property_type: string | null
+  address: string | null
+  rents_received: number
+  expenses: Record<string, number> | null
+  created_at: string
+}
+
+export type TaxDeductions = {
+  medical: number
+  state_local_taxes: number
+  mortgage_interest: number
+  charitable: number
+  other_itemized: number
+  estimated_credits: number
+}
+
 // 1099 variants we surface. `amount` is that form's headline box.
 export const FORM_1099_TYPES: { value: string; label: string }[] = [
   { value: 'nec', label: '1099-NEC — Nonemployee comp' },
@@ -131,6 +152,42 @@ export function scheduleCNet(sc: ScheduleC): number {
   )
 }
 
+// Schedule E rental / royalty expense line categories.
+export const SCHEDULE_E_EXPENSES: { key: string; label: string }[] = [
+  { key: 'advertising', label: 'Advertising' },
+  { key: 'auto_travel', label: 'Auto & travel' },
+  { key: 'cleaning', label: 'Cleaning & maintenance' },
+  { key: 'commissions', label: 'Commissions' },
+  { key: 'insurance', label: 'Insurance' },
+  { key: 'legal', label: 'Legal & professional' },
+  { key: 'management', label: 'Management fees' },
+  { key: 'mortgage_interest', label: 'Mortgage interest' },
+  { key: 'other_interest', label: 'Other interest' },
+  { key: 'repairs', label: 'Repairs' },
+  { key: 'supplies', label: 'Supplies' },
+  { key: 'taxes', label: 'Taxes' },
+  { key: 'utilities', label: 'Utilities' },
+  { key: 'depreciation', label: 'Depreciation' },
+  { key: 'other', label: 'Other expenses' },
+]
+
+export const SCHEDULE_E_EXPENSE_LABEL: Record<string, string> = Object.fromEntries(
+  SCHEDULE_E_EXPENSES.map((e) => [e.key, e.label])
+)
+
+export const PROPERTY_TYPES: { value: string; label: string }[] = [
+  { value: 'residential', label: 'Residential' },
+  { value: 'commercial', label: 'Commercial' },
+  { value: 'land', label: 'Land' },
+  { value: 'royalty', label: 'Royalty' },
+  { value: 'other', label: 'Other' },
+]
+
+// Net rental income for a single property (can be a loss).
+export function scheduleENet(se: ScheduleE): number {
+  return (se.rents_received || 0) - sumExpenses(se.expenses)
+}
+
 export type IncomeTotals = {
   w2Wages: number
   w2Withholding: number
@@ -149,15 +206,18 @@ export type IncomeTotals = {
   f1099Ordinary: number
   scheduleCGross: number
   scheduleCNet: number
+  // Net rental / royalty income across Schedule E properties (can be negative).
+  scheduleENet: number
   totalWithholding: number
-  // Total income = W-2 wages + all 1099 amounts + net Schedule C profit.
+  // Total income = wages + 1099s + Schedule C net + Schedule E net.
   totalIncome: number
 }
 
 export function computeIncome(
   w2: W2Income[],
   f1099: Income1099[],
-  scheduleC: ScheduleC[]
+  scheduleC: ScheduleC[],
+  scheduleE: ScheduleE[] = []
 ): IncomeTotals {
   const w2Wages = w2.reduce((a, r) => a + (r.wages || 0), 0)
   const w2Withholding = w2.reduce((a, r) => a + (r.fed_withholding || 0), 0)
@@ -179,6 +239,7 @@ export function computeIncome(
 
   const scheduleCGross = scheduleC.reduce((a, r) => a + (r.gross_receipts || 0), 0)
   const scheduleCNetTotal = scheduleC.reduce((a, r) => a + scheduleCNet(r), 0)
+  const scheduleENetTotal = scheduleE.reduce((a, r) => a + scheduleENet(r), 0)
 
   return {
     w2Wages,
@@ -193,7 +254,8 @@ export function computeIncome(
     f1099Ordinary,
     scheduleCGross,
     scheduleCNet: scheduleCNetTotal,
+    scheduleENet: scheduleENetTotal,
     totalWithholding: w2Withholding + f1099Withholding,
-    totalIncome: w2Wages + f1099Total + scheduleCNetTotal,
+    totalIncome: w2Wages + f1099Total + scheduleCNetTotal + scheduleENetTotal,
   }
 }

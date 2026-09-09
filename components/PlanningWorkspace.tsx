@@ -99,6 +99,7 @@ export default function PlanningWorkspace({
   longTermGains,
   shortTermGains,
   scheduleCNet,
+  rentalNet,
   w2Wages,
 }: {
   position: TaxPosition
@@ -113,6 +114,7 @@ export default function PlanningWorkspace({
   longTermGains: number
   shortTermGains: number
   scheduleCNet: number
+  rentalNet: number
   w2Wages: number
 }) {
   const p = position
@@ -340,10 +342,9 @@ export default function PlanningWorkspace({
             {w2Wages > 0 && <Line label="W-2 wages (effectively connected)" value={usd(w2Wages)} />}
             {otherIncome !== 0 && <Line label="Other US income" value={usd(otherIncome)} />}
             {scheduleCNet !== 0 && <Line label="Schedule C net" value={usd(scheduleCNet)} negative={scheduleCNet < 0} />}
-            {w2Wages + otherIncome + Math.max(0, scheduleCNet) > 0 && (
-              <>
-                <Line label="Graduated tax on US income" value={usd(p.incomeTax)} note="1040-NR, no standard deduction" />
-              </>
+            {rentalNet !== 0 && <Line label="Rental (Schedule E) net" value={usd(rentalNet)} note="effectively connected" negative={rentalNet < 0} />}
+            {w2Wages + otherIncome + scheduleCNet + rentalNet > 0 && (
+              <Line label="Graduated tax on US income" value={usd(p.incomeTax)} note="1040-NR, no standard deduction" />
             )}
             <Line label="US-source dividends (FDAP)" value={usd(dividends + ordinaryDividends)} strong />
             <Line
@@ -359,6 +360,7 @@ export default function PlanningWorkspace({
                 negative
               />
             )}
+            {p.credits > 0 && <Line label="Less: tax credits" value={`(${usd(p.credits)})`} negative />}
             <Line label="Total federal tax" value={usd(p.totalTax)} strong />
             <Line label="Less: federal withholding" value={`(${usd(p.withholding)})`} negative />
             <Line label={owes ? 'Estimated balance due' : 'Estimated refund'} value={usd(Math.abs(p.balance))} strong />
@@ -368,6 +370,7 @@ export default function PlanningWorkspace({
             {w2Wages > 0 && <Line label="W-2 wages" value={usd(w2Wages)} />}
             {otherIncome !== 0 && <Line label="1099 income" value={usd(otherIncome)} note="ordinary income" />}
             {scheduleCNet !== 0 && <Line label="Schedule C net" value={usd(scheduleCNet)} negative={scheduleCNet < 0} />}
+            {rentalNet !== 0 && <Line label="Rental (Schedule E) net" value={usd(rentalNet)} negative={rentalNet < 0} />}
             {ordinaryDividends > 0 && <Line label="Ordinary / REIT dividends" value={usd(ordinaryDividends)} note="ordinary rates" />}
             {shortTermGains > 0 && <Line label="Short-term capital gains" value={usd(shortTermGains)} note="ordinary rates" />}
             {dividends > 0 && <Line label="Qualified dividends" value={usd(dividends)} note="capital-gains rates" />}
@@ -375,12 +378,18 @@ export default function PlanningWorkspace({
             <Line label="Total income" value={usd(p.totalIncome)} strong />
             {p.seTaxDeduction > 0 && <Line label="Less: ½ self-employment tax" value={`(${usd(p.seTaxDeduction)})`} negative />}
             <Line label="Adjusted gross income (AGI)" value={usd(p.agi)} strong />
-            <Line label="Less: standard deduction" value={`(${usd(p.standardDeduction)})`} negative />
+            <Line
+              label={p.usedItemized ? 'Less: itemized deductions' : 'Less: standard deduction'}
+              value={`(${usd(p.deductionUsed)})`}
+              note={p.usedItemized ? `beats the ${usd(p.standardDeduction)} standard` : undefined}
+              negative
+            />
             {p.qbiDeduction > 0 && <Line label="Less: QBI deduction (est.)" value={`(${usd(p.qbiDeduction)})`} note="20% of qualified business income" negative />}
             <Line label="Taxable income" value={usd(p.taxableIncome)} strong />
             <Line label="Ordinary income tax" value={usd(p.incomeTax - p.dividendTax)} />
             {p.dividendTax > 0 && <Line label="Tax on dividends & long-term gains" value={usd(p.dividendTax)} note="0/15/20% capital-gains rates" />}
             {p.seTax > 0 && <Line label="Self-employment tax" value={usd(p.seTax)} />}
+            {p.credits > 0 && <Line label="Less: tax credits" value={`(${usd(p.credits)})`} negative />}
             <Line label="Total federal tax" value={usd(p.totalTax)} strong />
             <Line label="Less: federal withholding" value={`(${usd(p.withholding)})`} negative />
             <Line label={owes ? 'Estimated balance due' : 'Estimated refund'} value={usd(Math.abs(p.balance))} strong />

@@ -7,7 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin } from '@/lib/auth'
 import { createAccount } from '@/lib/onboarding/materialize'
 import { normalizeEntityType, type Owner } from '@/lib/onboarding/questions'
-import { onboardingBrief, reviseOnboarding, type OnboardingBrief, type OnboardingRevision } from '@/lib/ai'
+import { onboardingBrief, individualOnboardingBrief, reviseOnboarding, type OnboardingBrief, type OnboardingRevision } from '@/lib/ai'
 import { ob } from '@/lib/onboarding/i18n'
 import { getTemplate, plannedKinds, isCaliforniaState } from '@/lib/compliance'
 import { ENTITY_TYPE_LABELS, type EntityType } from '@/lib/types'
@@ -104,8 +104,29 @@ function deterministicBrief(ctx: ReturnType<typeof buildContext>): OnboardingBri
   return { read, handling }
 }
 
-// The Overseer's read for an individual (1040 filer). The AI brief model is
-// business-oriented, so individuals get a grounded deterministic read instead.
+// Context handed to the individual AI brief — the person's facts, with the
+// filing status spelled out.
+function buildIndividualContext(name: string, f: Record<string, unknown>) {
+  const fsLabel: Record<string, string> = {
+    single: 'single',
+    mfj: 'married filing jointly',
+    mfs: 'married filing separately',
+    hoh: 'head of household',
+    qw: 'qualifying surviving spouse',
+  }
+  const fs = typeof f.filing_status === 'string' ? f.filing_status : null
+  return {
+    name,
+    filing_status: fs ? fsLabel[fs] ?? fs : null,
+    home_state: typeof f.state === 'string' && f.state ? f.state : null,
+    occupation_or_description: typeof f.occupation === 'string' && f.occupation ? f.occupation : null,
+    income_sources: typeof f.income_sources === 'string' && f.income_sources ? f.income_sources : null,
+    tax_year: typeof f.tax_year === 'string' && f.tax_year ? f.tax_year : null,
+  }
+}
+
+// The Overseer's deterministic read for an individual — a fallback when the AI
+// brief is unavailable, so the review step never breaks.
 function individualBrief(name: string, f: Record<string, unknown>): OnboardingBrief {
   const fs = typeof f.filing_status === 'string' && f.filing_status ? f.filing_status : null
   const fsLabel: Record<string, string> = {
@@ -149,7 +170,13 @@ export async function brief(sessionId: string): Promise<OnboardingBrief> {
 
   let out: OnboardingBrief
   if (f.account_kind === 'individual') {
-    out = individualBrief(session.account_name as string, f)
+    const ctx = buildIndividualContext(session.account_name as string, f)
+    try {
+      out = await individualOnboardingBrief(ctx, viewer.locale)
+    } catch {
+      out = individualBrief(session.account_name as string, f)
+    }
+    if (!out.read && !out.handling) out = individualBrief(session.account_name as string, f)
   } else {
     const ctx = buildContext(session.account_name as string, f)
     try {
@@ -215,17 +242,17 @@ export async function respond(sessionId: string, message: string): Promise<Respo
   const f: Record<string, unknown> = {}
   for (const row of factRows ?? []) f[row.key as string] = row.normalized_value
 
-  // Individuals use a deterministic read (no business revise model). Acknowledge
-  // and point the operator to Back for direct edits, keeping the current read.
+  // Individuals: keep the Overseer's existing (AI) read rather than regenerating,
+  // and point the operator to Back for direct fact edits.
   if (f.account_kind === 'individual') {
-    const b = individualBrief(session.account_name as string, f)
+    const fallback = individualBrief(session.account_name as string, f)
     return {
       acknowledgment:
         viewer.locale === 'es'
           ? 'Anotado. Usa ← Volver para ajustar cualquier respuesta directamente.'
           : 'Noted. Use ← Back to adjust any answer directly.',
-      read: b.read,
-      handling: b.handling,
+      read: (session.overseer_read as string) || fallback.read,
+      handling: (session.overseer_handling as string) || fallback.handling,
       facts: f,
     }
   }
