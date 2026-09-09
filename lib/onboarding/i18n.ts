@@ -134,6 +134,7 @@ const OPT_ES: Record<string, string> = {
   'Qualifying surviving spouse': 'Cónyuge sobreviviente calificado(a)',
   'W-2 employment': 'Empleo W-2',
   'Self-employment': 'Trabajo por cuenta propia',
+  'Dividends / investments': 'Dividendos / inversiones',
   'Both W-2 and self-employment': 'W-2 y cuenta propia',
   'Other / not sure': 'Otro / no estoy seguro',
   'Sole Proprietor': 'Propietario único',
@@ -171,6 +172,7 @@ const HINT_ES: Record<string, string> = {
   'LLC, corporation, partnership — has its own books': 'LLC, corporación, sociedad — tiene sus propios libros',
   'A person / 1040 filer': 'Una persona / declarante del 1040',
   '1099 / Schedule C': '1099 / Schedule C',
+  'dividends, interest, capital gains': 'dividendos, intereses, ganancias de capital',
 }
 
 export function stageLabel(locale: Locale, stage: string): string {

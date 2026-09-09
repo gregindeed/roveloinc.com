@@ -70,6 +70,7 @@ function individualNarrative(inp: AccountInput): string {
   const src: Record<string, string> = {
     w2: 'W-2 wage income',
     self: 'self-employment income (1099 / Schedule C)',
+    investments: 'investment income (dividends, interest, capital gains)',
     both: 'both W-2 and self-employment income',
     other: 'income to be detailed',
   }

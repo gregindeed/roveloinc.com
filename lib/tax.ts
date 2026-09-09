@@ -139,9 +139,12 @@ export type TaxPositionInput = {
   filingStatus: FilingStatus
   w2Wages: number
   w2SsWages: number
-  otherIncome: number // ordinary 1099 income (dividends handled separately)
+  otherIncome: number // pure ordinary 1099 (interest, NEC, etc. — no dividends/gains)
   scheduleCNet: number
-  qualifiedDividends?: number // 1099-DIV — qualified dividends (e.g. C-corp distributions)
+  qualifiedDividends?: number // 1099-DIV qualified (e.g. C-corp distributions) → cap-gains rates
+  ordinaryDividends?: number // ordinary / REIT dividends → ordinary rates (resident), FDAP (NR)
+  longTermGains?: number // net long-term capital gain → cap-gains rates (resident), excluded (NR)
+  shortTermGains?: number // net short-term capital gain → ordinary rates (resident), excluded (NR)
   withholding: number
   preTaxAdjustments?: number
   // Residency basis. 'nonresident' switches to 1040-NR treatment.
@@ -238,31 +241,36 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
   const brackets = bracketsFor(table, inp.filingStatus)
   const residency: Residency = inp.residency === 'nonresident' ? 'nonresident' : 'resident'
   const qualDiv = Math.max(0, inp.qualifiedDividends ?? 0)
+  const ordDiv = Math.max(0, inp.ordinaryDividends ?? 0)
+  const ltGains = Math.max(0, inp.longTermGains ?? 0)
+  const stGains = Math.max(0, inp.shortTermGains ?? 0)
   const scheduleCNet = Math.max(0, inp.scheduleCNet)
   const preTax = inp.preTaxAdjustments ?? 0
-  const totalIncome = inp.w2Wages + inp.otherIncome + inp.scheduleCNet + qualDiv
+  const totalIncome = inp.w2Wages + inp.otherIncome + inp.scheduleCNet + qualDiv + ordDiv + ltGains + stGains
 
   // ── Nonresident alien — Form 1040-NR ───────────────────────────────────────
   if (residency === 'nonresident') {
     // Effectively-connected income taxed at graduated rates, no standard
-    // deduction and no QBI. Nonresident aliens aren't subject to SE tax.
+    // deduction and no QBI. Nonresident aliens aren't subject to SE tax, and
+    // their capital gains on securities are generally not US-taxed (excluded).
     const eci = Math.max(0, inp.w2Wages + inp.otherIncome + inp.scheduleCNet - preTax)
     const { tax: eciTax, slices } = taxOn(eci, brackets)
     const dividendRate = inp.treatyDividendRate != null ? inp.treatyDividendRate : NR_DEFAULT_FDAP_RATE
-    const dividendTax = qualDiv * dividendRate
+    const fdapDividends = qualDiv + ordDiv // all US-source dividends are FDAP
+    const dividendTax = fdapDividends * dividendRate
     const totalTax = eciTax + dividendTax
     const mb = marginalBand(eci, brackets)
     return {
       year, exactYear: exact, filingStatus: inp.filingStatus, residency,
       totalIncome: round(totalIncome),
-      qualifiedDividends: round(qualDiv),
+      qualifiedDividends: round(fdapDividends),
       dividendTax: round(dividendTax),
       dividendRate,
       seTax: 0, seTaxDeduction: 0,
-      agi: round(eci + qualDiv),
+      agi: round(eci + fdapDividends),
       standardDeduction: 0,
       qbiDeduction: 0, qbiEstimated: true,
-      taxableIncome: round(eci + qualDiv),
+      taxableIncome: round(eci + fdapDividends),
       incomeTax: round(eciTax),
       totalTax: round(totalTax),
       withholding: round(inp.withholding),
@@ -300,12 +308,14 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
   }
 
   const taxableIncome = Math.max(0, taxableBeforeQbi - qbiDeduction)
-  // Qualified dividends inside taxable income are taxed at cap-gains rates; the
-  // rest of taxable income is ordinary.
-  const qualDivTaxable = Math.min(qualDiv, taxableIncome)
-  const ordinaryTaxable = Math.max(0, taxableIncome - qualDivTaxable)
+  // Qualified dividends and net long-term gains inside taxable income are taxed
+  // at capital-gains rates; the rest (incl. ordinary/REIT dividends and short-term
+  // gains) is ordinary.
+  const capGainsRateIncome = qualDiv + ltGains
+  const gainsTaxable = Math.min(capGainsRateIncome, taxableIncome)
+  const ordinaryTaxable = Math.max(0, taxableIncome - gainsTaxable)
   const { tax: ordinaryTax, slices } = taxOn(ordinaryTaxable, brackets)
-  const dividendTax = stackedGainsTax(ordinaryTaxable, qualDivTaxable, ltcgFor(year, inp.filingStatus))
+  const dividendTax = stackedGainsTax(ordinaryTaxable, gainsTaxable, ltcgFor(year, inp.filingStatus))
   const incomeTax = ordinaryTax + dividendTax
   const totalTax = incomeTax + seTax
   const balance = totalTax - inp.withholding
@@ -316,7 +326,7 @@ export function computeTaxPosition(inp: TaxPositionInput): TaxPosition {
   return {
     year, exactYear: exact, filingStatus: inp.filingStatus, residency,
     totalIncome: round(totalIncome),
-    qualifiedDividends: round(qualDivTaxable),
+    qualifiedDividends: round(gainsTaxable),
     dividendTax: round(dividendTax),
     dividendRate: null,
     seTax: round(seTax),

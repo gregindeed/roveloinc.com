@@ -11,6 +11,7 @@ import { ENTITY_TYPE_LABELS, FILING_STATUS_LABELS, type EntityType } from '@/lib
 const INCOME_SOURCE_LABELS: Record<string, string> = {
   w2: 'W-2 employment',
   self: 'Self-employment',
+  investments: 'Dividends / investments',
   both: 'W-2 and self-employment',
   other: 'Other / not sure',
 }
@@ -160,6 +161,7 @@ export const QUESTIONS: Question[] = [
     options: [
       { value: 'w2', label: 'W-2 employment' },
       { value: 'self', label: 'Self-employment', hint: '1099 / Schedule C' },
+      { value: 'investments', label: 'Dividends / investments', hint: 'dividends, interest, capital gains' },
       { value: 'both', label: 'Both W-2 and self-employment' },
       { value: 'other', label: 'Other / not sure' },
     ],

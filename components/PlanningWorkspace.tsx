@@ -95,6 +95,9 @@ export default function PlanningWorkspace({
   scenarios,
   otherIncome,
   dividends,
+  ordinaryDividends,
+  longTermGains,
+  shortTermGains,
   scheduleCNet,
   w2Wages,
 }: {
@@ -106,6 +109,9 @@ export default function PlanningWorkspace({
   scenarios: Scenario[]
   otherIncome: number
   dividends: number
+  ordinaryDividends: number
+  longTermGains: number
+  shortTermGains: number
   scheduleCNet: number
   w2Wages: number
 }) {
@@ -201,7 +207,7 @@ export default function PlanningWorkspace({
       {scenarios.length > 1 && (
         <div className="rounded-xl border border-gray-200 p-5">
           <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Filing basis · federal tax on {usd(dividends)} of dividends</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Filing basis · federal tax on {usd(dividends + ordinaryDividends)} of dividends</h2>
             {bestScenario && <span className="text-xs text-gray-500">Lowest: <span className="font-semibold text-emerald-600">{bestScenario.label}</span></span>}
           </div>
           <p className="text-xs text-gray-500 mt-0.5 mb-3">
@@ -339,12 +345,20 @@ export default function PlanningWorkspace({
                 <Line label="Graduated tax on US income" value={usd(p.incomeTax)} note="1040-NR, no standard deduction" />
               </>
             )}
-            <Line label="US-source dividends (FDAP)" value={usd(dividends)} strong />
+            <Line label="US-source dividends (FDAP)" value={usd(dividends + ordinaryDividends)} strong />
             <Line
               label={`Dividend tax @ ${p.dividendRate != null ? pctInt(p.dividendRate) : '30%'}`}
               value={usd(p.dividendTax)}
               note={p.dividendRate != null && p.dividendRate < 0.3 ? 'reduced treaty rate' : 'statutory flat rate'}
             />
+            {longTermGains + shortTermGains > 0 && (
+              <Line
+                label="Capital gains — excluded"
+                value={usd(longTermGains + shortTermGains)}
+                note="nonresident securities gains generally not US-taxed"
+                negative
+              />
+            )}
             <Line label="Total federal tax" value={usd(p.totalTax)} strong />
             <Line label="Less: federal withholding" value={`(${usd(p.withholding)})`} negative />
             <Line label={owes ? 'Estimated balance due' : 'Estimated refund'} value={usd(Math.abs(p.balance))} strong />
@@ -354,7 +368,10 @@ export default function PlanningWorkspace({
             {w2Wages > 0 && <Line label="W-2 wages" value={usd(w2Wages)} />}
             {otherIncome !== 0 && <Line label="1099 income" value={usd(otherIncome)} note="ordinary income" />}
             {scheduleCNet !== 0 && <Line label="Schedule C net" value={usd(scheduleCNet)} negative={scheduleCNet < 0} />}
-            {dividends > 0 && <Line label="Qualified dividends" value={usd(dividends)} note="taxed at capital-gains rates" />}
+            {ordinaryDividends > 0 && <Line label="Ordinary / REIT dividends" value={usd(ordinaryDividends)} note="ordinary rates" />}
+            {shortTermGains > 0 && <Line label="Short-term capital gains" value={usd(shortTermGains)} note="ordinary rates" />}
+            {dividends > 0 && <Line label="Qualified dividends" value={usd(dividends)} note="capital-gains rates" />}
+            {longTermGains > 0 && <Line label="Long-term capital gains" value={usd(longTermGains)} note="capital-gains rates" />}
             <Line label="Total income" value={usd(p.totalIncome)} strong />
             {p.seTaxDeduction > 0 && <Line label="Less: ½ self-employment tax" value={`(${usd(p.seTaxDeduction)})`} negative />}
             <Line label="Adjusted gross income (AGI)" value={usd(p.agi)} strong />
@@ -362,7 +379,7 @@ export default function PlanningWorkspace({
             {p.qbiDeduction > 0 && <Line label="Less: QBI deduction (est.)" value={`(${usd(p.qbiDeduction)})`} note="20% of qualified business income" negative />}
             <Line label="Taxable income" value={usd(p.taxableIncome)} strong />
             <Line label="Ordinary income tax" value={usd(p.incomeTax - p.dividendTax)} />
-            {p.dividendTax > 0 && <Line label="Tax on qualified dividends" value={usd(p.dividendTax)} note="0/15/20% cap-gains rates" />}
+            {p.dividendTax > 0 && <Line label="Tax on dividends & long-term gains" value={usd(p.dividendTax)} note="0/15/20% capital-gains rates" />}
             {p.seTax > 0 && <Line label="Self-employment tax" value={usd(p.seTax)} />}
             <Line label="Total federal tax" value={usd(p.totalTax)} strong />
             <Line label="Less: federal withholding" value={`(${usd(p.withholding)})`} negative />

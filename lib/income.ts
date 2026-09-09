@@ -54,7 +54,10 @@ export const FORM_1099_TYPES: { value: string; label: string }[] = [
   { value: 'nec', label: '1099-NEC — Nonemployee comp' },
   { value: 'misc', label: '1099-MISC — Miscellaneous' },
   { value: 'int', label: '1099-INT — Interest' },
-  { value: 'div', label: '1099-DIV — Dividends' },
+  { value: 'div', label: '1099-DIV — Qualified dividends' },
+  { value: 'divord', label: '1099-DIV — Ordinary / REIT dividends' },
+  { value: 'ltcg', label: 'Capital gain — long-term' },
+  { value: 'stcg', label: 'Capital gain — short-term' },
   { value: 'k', label: '1099-K — Card / third-party' },
   { value: 'g', label: '1099-G — Government payments' },
   { value: 'r', label: '1099-R — Retirement' },
@@ -73,6 +76,9 @@ export function form1099Short(type: string): string {
     misc: '1099-MISC',
     int: '1099-INT',
     div: '1099-DIV',
+    divord: '1099-DIV',
+    ltcg: 'LT gain',
+    stcg: 'ST gain',
     k: '1099-K',
     g: '1099-G',
     r: '1099-R',
@@ -131,10 +137,15 @@ export type IncomeTotals = {
   f1099Total: number
   f1099Withholding: number
   f1099ByType: { type: string; label: string; amount: number }[]
-  // Dividends (1099-DIV) — separated out because they get capital-gains /
-  // treaty treatment rather than ordinary rates.
-  dividends: number
-  // Ordinary 1099 income = f1099Total minus dividends.
+  // Investment income broken out — each gets its own tax treatment:
+  //   dividends (qualified) + longTermGains → capital-gains rates (or FDAP for NR)
+  //   ordinaryDividends + shortTermGains    → ordinary rates
+  dividends: number // qualified dividends (1099-DIV)
+  ordinaryDividends: number // ordinary / REIT dividends
+  longTermGains: number // net long-term capital gain
+  shortTermGains: number // net short-term capital gain
+  // Pure ordinary 1099 income — everything except the four investment buckets
+  // above (interest, NEC, MISC, K, G, R, B, SSA, other).
   f1099Ordinary: number
   scheduleCGross: number
   scheduleCNet: number
@@ -153,8 +164,13 @@ export function computeIncome(
 
   const f1099Total = f1099.reduce((a, r) => a + (r.amount || 0), 0)
   const f1099Withholding = f1099.reduce((a, r) => a + (r.fed_withholding || 0), 0)
-  const dividends = f1099.filter((r) => r.form_type === 'div').reduce((a, r) => a + (r.amount || 0), 0)
-  const f1099Ordinary = f1099Total - dividends
+  const sumType = (t: string) => f1099.filter((r) => r.form_type === t).reduce((a, r) => a + (r.amount || 0), 0)
+  const dividends = sumType('div') // qualified
+  const ordinaryDividends = sumType('divord')
+  const longTermGains = sumType('ltcg')
+  const shortTermGains = sumType('stcg')
+  // Pure ordinary 1099 = total minus the four specially-treated investment buckets.
+  const f1099Ordinary = f1099Total - dividends - ordinaryDividends - longTermGains - shortTermGains
   const byType = new Map<string, number>()
   for (const r of f1099) byType.set(r.form_type, (byType.get(r.form_type) ?? 0) + (r.amount || 0))
   const f1099ByType = Array.from(byType.entries())
@@ -171,6 +187,9 @@ export function computeIncome(
     f1099Withholding,
     f1099ByType,
     dividends,
+    ordinaryDividends,
+    longTermGains,
+    shortTermGains,
     f1099Ordinary,
     scheduleCGross,
     scheduleCNet: scheduleCNetTotal,

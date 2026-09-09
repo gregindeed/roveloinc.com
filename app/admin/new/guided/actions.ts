@@ -121,6 +121,7 @@ function individualBrief(name: string, f: Record<string, unknown>): OnboardingBr
   const srcLine: Record<string, string> = {
     w2: "I'll set up their W-2 wage income for the year.",
     self: "I'll set up their self-employment income — 1099s and a Schedule C.",
+    investments: "I'll set up their investment income — dividends, interest, and capital gains.",
     both: "I'll set up both their W-2 wages and self-employment (1099 / Schedule C).",
     other: "We'll detail their income together on the Income tab.",
   }

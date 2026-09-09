@@ -42,9 +42,12 @@ export default async function PlanningPage({ params }: { params: { slug: string;
     filingStatus: asFilingStatus(c.filing_status),
     w2Wages: totals.w2Wages,
     w2SsWages,
-    otherIncome: totals.f1099Ordinary, // dividends taxed separately
+    otherIncome: totals.f1099Ordinary, // pure ordinary (dividends/gains handled separately)
     scheduleCNet: totals.scheduleCNet,
     qualifiedDividends: totals.dividends,
+    ordinaryDividends: totals.ordinaryDividends,
+    longTermGains: totals.longTermGains,
+    shortTermGains: totals.shortTermGains,
     withholding: totals.totalWithholding,
     residency,
     treatyDividendRate: treatyRate,
@@ -73,7 +76,7 @@ export default async function PlanningPage({ params }: { params: { slug: string;
   ]
   const currentKey = residency === 'resident' ? 'resident' : treatyRate != null ? 'nr_treaty' : 'nr_30'
   const scenarios =
-    totals.dividends > 0
+    totals.dividends + totals.ordinaryDividends > 0
       ? scenarioInputs.map((s) => {
           const pos = computeTaxPosition(s.input)
           return { key: s.key, label: s.label, totalTax: pos.totalTax, current: s.key === currentKey }
@@ -101,6 +104,9 @@ export default async function PlanningPage({ params }: { params: { slug: string;
           w2Wages={totals.w2Wages}
           otherIncome={totals.f1099Ordinary}
           dividends={totals.dividends}
+          ordinaryDividends={totals.ordinaryDividends}
+          longTermGains={totals.longTermGains}
+          shortTermGains={totals.shortTermGains}
           scheduleCNet={totals.scheduleCNet}
         />
       ) : (
