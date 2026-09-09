@@ -81,6 +81,9 @@ export default function GuidedOnboarding({
   const [name, setName] = useState('')
   const [sessionId, setSessionId] = useState('')
   const [facts, setFacts] = useState<FactMap>(() => (initialKind ? { account_kind: initialKind } : {}))
+  // A stack of prior fact snapshots so "Back" restores the exact previous state
+  // (handles companion facts like entity_subtype and skipped optionals cleanly).
+  const [history, setHistory] = useState<FactMap[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [brief, setBrief] = useState<Brief | null>(null)
@@ -140,6 +143,18 @@ export default function GuidedOnboarding({
     setPhase('question')
   }
 
+  // Step back to the previous question, restoring the snapshot from before the
+  // last answer. Available during questions and from the review screen.
+  function goBack() {
+    if (history.length === 0) return
+    const prev = history[history.length - 1]
+    setHistory((h) => h.slice(0, -1))
+    setFacts(prev)
+    setBrief(null)
+    setThread([])
+    setPhase('question')
+  }
+
   async function answer(
     key: string,
     raw: string,
@@ -148,6 +163,7 @@ export default function GuidedOnboarding({
   ) {
     setBusy(true)
     setError(null)
+    setHistory((h) => [...h, facts]) // snapshot before applying this answer
     await saveAnswer(sessionId, key, raw, normalized)
     let nextFacts: FactMap = { ...facts, [key]: normalized }
     if (companion) {
@@ -257,7 +273,15 @@ export default function GuidedOnboarding({
 
       {/* Question */}
       {phase === 'question' && current && (
-        <QuestionScreen key={current.key} q={current} prompt={prompt(current)} busy={busy} locale={locale} onAnswer={answer} />
+        <QuestionScreen
+          key={current.key}
+          q={current}
+          prompt={prompt(current)}
+          busy={busy}
+          locale={locale}
+          onAnswer={answer}
+          onBack={history.length > 0 ? goBack : undefined}
+        />
       )}
 
       {/* Review */}
@@ -349,7 +373,7 @@ export default function GuidedOnboarding({
             <button onClick={create} disabled={busy} className={primary}>
               {busy ? ob(locale, 'review.creating') : ob(locale, 'review.create')}
             </button>
-            <button onClick={() => setPhase('question')} className={ghost}>
+            <button onClick={goBack} className={ghost}>
               {ob(locale, 'review.back')}
             </button>
           </div>
@@ -365,12 +389,14 @@ function QuestionScreen({
   busy,
   locale,
   onAnswer,
+  onBack,
 }: {
   q: Question
   prompt: string
   busy: boolean
   locale: Locale
   onAnswer: (key: string, raw: string, normalized: unknown, companion?: { key: string; value: unknown }) => void
+  onBack?: () => void
 }) {
   const [custom, setCustom] = useState('')
   const [showCustom, setShowCustom] = useState(false)
@@ -402,6 +428,11 @@ function QuestionScreen({
   return (
     <div className="space-y-6">
       <div>
+        {onBack && (
+          <button onClick={onBack} className={`${ghost} mb-3 -mt-2 block`}>
+            {ob(locale, 'q.back')}
+          </button>
+        )}
         <h1 className="text-2xl font-semibold text-gray-900 tracking-tight" style={serif}>
           {prompt}
         </h1>

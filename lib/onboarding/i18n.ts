@@ -54,6 +54,7 @@ const OB: Record<string, { en: string; es: string }> = {
   'review.create': { en: 'Create account →', es: 'Crear cuenta →' },
   'review.creating': { en: 'Creating…', es: 'Creando…' },
   'review.back': { en: '← Back', es: '← Volver' },
+  'q.back': { en: '← Back', es: '← Volver' },
   'q.more': { en: 'More options →', es: 'Más opciones →' },
   'q.somethingElse': { en: 'Something else →', es: 'Otra cosa →' },
   'q.typeAnswer': { en: 'Type your answer', es: 'Escribe tu respuesta' },
