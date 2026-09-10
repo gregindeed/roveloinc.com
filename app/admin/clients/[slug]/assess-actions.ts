@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { assess, overseerModel } from '@/lib/ai'
+import { assess, assessOverview, overseerModel } from '@/lib/ai'
 import { logEvent, registryDigest } from '@/lib/registryServer'
 import type { Client } from '@/lib/types'
 import { entityBase } from '@/lib/entityYear'
@@ -209,8 +209,17 @@ export async function generateAssessment(slug: string, scope: string) {
 
   const locale = getLocale()
   let content: string
+  // The overview scope produces a short business brief alongside the full read;
+  // every other scope is just the single read.
+  let brief: string | null = null
   try {
-    content = await assess(scope, context, locale)
+    if (scope === 'overview') {
+      const r = await assessOverview(context, locale)
+      content = r.read
+      brief = r.brief || null
+    } else {
+      content = await assess(scope, context, locale)
+    }
   } catch (e) {
     content = `Assessment unavailable: ${e instanceof Error ? e.message : 'unknown error'}`
   }
@@ -219,7 +228,7 @@ export async function generateAssessment(slug: string, scope: string) {
   await supabase
     .from('ai_assessments')
     .upsert(
-      { client_id: c.id, scope, content, model: overseerModel(), source_lang: locale, translations: {} },
+      { client_id: c.id, scope, content, brief, model: overseerModel(), source_lang: locale, translations: {} },
       { onConflict: 'client_id,scope' }
     )
   const sub = scope === 'compliance' || scope === 'documents' ? `/${scope}` : ''

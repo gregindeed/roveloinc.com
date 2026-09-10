@@ -130,6 +130,27 @@ export function resetEmailHtml(setupUrl: string) {
 </body></html>`
 }
 
+/** Passwordless "sign in" link for a client portal login (admin-triggered). */
+export function portalMagicLinkEmailHtml(url: string) {
+  return `<!DOCTYPE html>
+<html><body style="margin:0;background:#f9fafb;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1a1a2e;">
+  <div style="max-width:480px;margin:0 auto;padding:40px 24px;">
+    <div style="font-size:20px;font-weight:700;margin-bottom:24px;">Rovelo <span style="font-style:italic;color:#9ca3af;font-weight:400;">Inc.</span></div>
+    <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:28px;">
+      <h1 style="font-size:18px;margin:0 0 12px;">Sign in to your portal</h1>
+      <p style="font-size:14px;line-height:1.6;color:#374151;margin:0 0 20px;">
+        Here's a secure link to sign in to your Rovelo Inc client portal — no password needed. Just click below.
+      </p>
+      <a href="${url}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 18px;border-radius:8px;">Sign in to portal</a>
+      <p style="font-size:12px;line-height:1.6;color:#6b7280;margin:20px 0 0;">
+        This link is single-use and expires. If you didn't request it, you can safely ignore this email.
+      </p>
+    </div>
+    <p style="font-size:11px;color:#9ca3af;text-align:center;margin-top:20px;">Rovelo Inc · San Diego, CA</p>
+  </div>
+</body></html>`
+}
+
 /** Branded invite email sent to a newly-onboarded client. */
 export function inviteEmailHtml(clientName: string, setupUrl: string) {
   return `<!DOCTYPE html>

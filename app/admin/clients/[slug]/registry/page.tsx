@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import OverviewCommand from '@/components/OverviewCommand'
+import OverseerBrief from '@/components/OverseerBrief'
 import RegistryPanel from '@/components/RegistryPanel'
 import { gatherAndCompute, persistState } from '@/lib/entityStateServer'
 import type { Client, EntityLogEntry } from '@/lib/types'
@@ -17,7 +17,7 @@ export default async function RegistryPage({ params }: { params: { slug: string 
   const [{ data: assessment }, { data: logEntries }] = await Promise.all([
     supabase
       .from('ai_assessments')
-      .select('content, model, created_at')
+      .select('content, brief, model, created_at')
       .eq('client_id', c.id)
       .eq('scope', 'overview')
       .maybeSingle(),
@@ -31,7 +31,13 @@ export default async function RegistryPage({ params }: { params: { slug: string 
 
   return (
     <div className="space-y-6">
-      <OverviewCommand slug={c.slug} state={state} assessment={assessment} context={c.overseer_context} />
+      <OverseerBrief
+        slug={c.slug}
+        brief={assessment?.brief ?? null}
+        read={assessment?.content ?? null}
+        context={c.overseer_context}
+        createdAt={assessment?.created_at ?? null}
+      />
       <RegistryPanel slug={c.slug} entries={(logEntries ?? []) as EntityLogEntry[]} />
     </div>
   )

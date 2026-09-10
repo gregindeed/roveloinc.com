@@ -20,7 +20,7 @@ const jsonLd = {
   name: 'Rovelo Inc',
   legalName: 'Rovelo Inc',
   description:
-    'Business advisory and solutions for small businesses: bookkeeping, financial reporting, tax preparation, and payroll.',
+    'Business advisory and solutions for small businesses: bookkeeping, financial reporting, tax preparation, payroll, and real estate management & investments.',
   url: 'https://roveloinc.com',
   image: 'https://roveloinc.com/rovelo_icon.png',
   logo: 'https://roveloinc.com/rovelo_icon.png',
@@ -31,12 +31,13 @@ const jsonLd = {
     addressCountry: 'US',
   },
   areaServed: { '@type': 'Country', name: 'United States' },
-  knowsAbout: ['Bookkeeping', 'Financial Reporting', 'Tax Preparation', 'Payroll', 'Business Advisory'],
+  knowsAbout: ['Bookkeeping', 'Financial Reporting', 'Tax Preparation', 'Payroll', 'Real Estate Management', 'Investments', 'Business Advisory'],
   makesOffer: [
     { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Bookkeeping', description: 'Monthly reconciliation and clean, reliable records.' } },
     { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Financial Reporting', description: 'P&L, balance sheets, and cash flow on your schedule.' } },
     { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Tax Preparation', description: 'Year-end filings and quarterly estimates, on time.' } },
     { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Payroll', description: 'Processing, filings, and compliance—handled.' } },
+    { '@type': 'Offer', itemOffered: { '@type': 'Service', name: 'Real Estate Management & Investments', description: 'Rental income, property books, and investment tracking.' } },
   ],
 }
 
@@ -45,6 +46,7 @@ const services = [
   { num: '02', title: 'Financial Reporting', desc: 'P&L, balance sheets, and cash flow on your schedule.' },
   { num: '03', title: 'Tax Preparation', desc: 'Year-end filings and quarterly estimates, on time.' },
   { num: '04', title: 'Payroll', desc: 'Processing, filings, and compliance—handled.' },
+  { num: '05', title: 'Real Estate Management & Investments', desc: 'Rental income, property books, and investment tracking.' },
 ]
 
 export default function Home() {

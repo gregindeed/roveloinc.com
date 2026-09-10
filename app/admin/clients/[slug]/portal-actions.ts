@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
-import { provisionPortalLogin } from '@/lib/portal'
+import { provisionPortalLogin, portalLoginFor, sendPortalLoginLink } from '@/lib/portal'
 
 function siteUrl() {
   const host = headers().get('host') ?? 'localhost:3001'
@@ -39,4 +39,34 @@ export async function invitePortalClient(slug: string, formData: FormData) {
     redirect(`/admin/clients/${slug}/account?warn=${encodeURIComponent(res.error)}`)
   }
   redirect(`/admin/clients/${slug}/account?ok=${encodeURIComponent(`Portal invite emailed to ${email}.`)}`)
+}
+
+// Email the existing portal client a fresh way in. `kind` is 'magiclink'
+// (one-click sign-in, no password) or 'recovery' (set a new password).
+async function sendPortalLink(slug: string, kind: 'magiclink' | 'recovery') {
+  const supabase = await requireManager()
+  const { data: client } = await supabase.from('clients').select('id').eq('slug', slug).single()
+  if (!client) redirect(`/admin/clients/${slug}/account?warn=${encodeURIComponent('Entity not found.')}`)
+
+  const login = await portalLoginFor(client.id as string)
+  if (!login) {
+    redirect(`/admin/clients/${slug}/account?warn=${encodeURIComponent('No active portal login yet — send an invite first.')}`)
+  }
+
+  const res = await sendPortalLoginLink(login.email, kind, siteUrl())
+  revalidatePath(`/admin/clients/${slug}/account`)
+  if (!res.ok) {
+    redirect(`/admin/clients/${slug}/account?warn=${encodeURIComponent(res.error)}`)
+  }
+  const what = kind === 'magiclink' ? 'Sign-in link' : 'Password-reset link'
+  redirect(`/admin/clients/${slug}/account?ok=${encodeURIComponent(`${what} emailed to ${login.email}.`)}`)
+}
+
+// Bound in the panel: <form action={sendPortalMagicLink.bind(null, slug)}>
+export async function sendPortalMagicLink(slug: string) {
+  await sendPortalLink(slug, 'magiclink')
+}
+
+export async function sendPortalPasswordReset(slug: string) {
+  await sendPortalLink(slug, 'recovery')
 }

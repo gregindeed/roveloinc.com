@@ -16,6 +16,11 @@ const DOT: Record<Urgency, string> = {
   low: 'bg-gray-200',
 }
 
+// The readiness gauges (score + Identity/Documents/Coverage/Compliance) and the
+// derived "What's next" list are asleep for now — flip this to true to bring them
+// back. The Overseer read and its context box stay live regardless.
+const SHOW_READINESS = false
+
 // A compact gauge: label, a value, and a hairline bar. Grayscale by default,
 // red only when the number signals a real problem.
 function Gauge({ label, value, score, bad }: { label: string; value: string; score: number; bad?: boolean }) {
@@ -75,38 +80,47 @@ export default function OverviewCommand({
 
   return (
     <div className="rounded-2xl border border-gray-200 p-5">
-      {/* Gauge strip — quick awareness, not a landlord */}
+      {/* Header row — the readiness score/gauges are asleep (SHOW_READINESS);
+          the Generate/Refresh read control stays. */}
       <div className="flex items-start justify-between gap-4">
-        <div className="flex items-baseline gap-2">
-          <span className={`text-xl font-semibold tabular-nums ${overallBad ? 'text-red-600' : 'text-gray-900'}`}>
-            {overall}
-          </span>
-          <span className="text-[11px] text-gray-400">{t('admin.ready100')}</span>
-        </div>
+        {SHOW_READINESS ? (
+          <div className="flex items-baseline gap-2">
+            <span className={`text-xl font-semibold tabular-nums ${overallBad ? 'text-red-600' : 'text-gray-900'}`}>
+              {overall}
+            </span>
+            <span className="text-[11px] text-gray-400">{t('admin.ready100')}</span>
+          </div>
+        ) : (
+          <div />
+        )}
         <div className="flex items-center gap-3 text-[11px]">
-          <form action={recomputeEntityState.bind(null, slug)}>
-            <button className="text-gray-400 hover:text-gray-700">{t('admin.recompute')}</button>
-          </form>
+          {SHOW_READINESS && (
+            <form action={recomputeEntityState.bind(null, slug)}>
+              <button className="text-gray-400 hover:text-gray-700">{t('admin.recompute')}</button>
+            </form>
+          )}
           <form action={generateAssessment.bind(null, slug, 'overview')}>
             <button className="font-medium text-gray-700 hover:text-gray-900">{assessment ? t('admin.refreshRead') : t('admin.generateRead')}</button>
           </form>
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-2.5">
-        <Gauge label={t('admin.identity')} value={`${state.identity.have}/${state.identity.total}`} score={state.identity.score} bad={state.identity.score < 50} />
-        <Gauge label={t('admin.documents')} value={`${state.documents.have}/${state.documents.total}`} score={state.documents.score} bad={state.documents.score < 50} />
-        <Gauge label={t('admin.coverage')} value={`${fin.monthsCovered}/${fin.monthsExpected} ${t('admin.monthsUnit')}`} score={fin.score} bad={fin.score < 50} />
-        <Gauge
-          label={t('admin.compliance')}
-          value={cmp.overdue > 0 ? t('admin.nOverdue', { n: cmp.overdue }) : cmp.known ? t('admin.onTrack') : t('admin.notSet')}
-          score={cmp.score}
-          bad={cmp.overdue > 0}
-        />
-      </div>
+      {SHOW_READINESS && (
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-2.5">
+          <Gauge label={t('admin.identity')} value={`${state.identity.have}/${state.identity.total}`} score={state.identity.score} bad={state.identity.score < 50} />
+          <Gauge label={t('admin.documents')} value={`${state.documents.have}/${state.documents.total}`} score={state.documents.score} bad={state.documents.score < 50} />
+          <Gauge label={t('admin.coverage')} value={`${fin.monthsCovered}/${fin.monthsExpected} ${t('admin.monthsUnit')}`} score={fin.score} bad={fin.score < 50} />
+          <Gauge
+            label={t('admin.compliance')}
+            value={cmp.overdue > 0 ? t('admin.nOverdue', { n: cmp.overdue }) : cmp.known ? t('admin.onTrack') : t('admin.notSet')}
+            score={cmp.score}
+            bad={cmp.overdue > 0}
+          />
+        </div>
+      )}
 
       {/* Overseer read — the actual insight, given the prominence */}
-      <div className="mt-4 pt-4 border-t border-gray-100">
+      <div className={SHOW_READINESS ? 'mt-4 pt-4 border-t border-gray-100' : 'mt-1'}>
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{t('admin.overseerRead')}</span>
           <span className="text-[10px] text-gray-300" suppressHydrationWarning>
@@ -122,8 +136,8 @@ export default function OverviewCommand({
         )}
       </div>
 
-      {/* What's next — collapsed by default (progressive disclosure) */}
-      {actions.length > 0 && (
+      {/* What's next — asleep with the readiness gauges (SHOW_READINESS). */}
+      {SHOW_READINESS && actions.length > 0 && (
         <div className="mt-3">
           <button
             onClick={() => setShowNext((v) => !v)}

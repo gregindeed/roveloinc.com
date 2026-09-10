@@ -13,6 +13,14 @@ function esc(s: string): string {
 // POSTs back, verifies it. This prevents "invalid or has expired" caused by a
 // scanner burning the link before the human clicks.
 function interstitial(token_hash: string, type: string, next: string): string {
+  // A magic-link sign-in goes straight to the portal; invite/recovery go to
+  // set-password. Match the copy so a returning client isn't told to "set a
+  // password" when they're just signing in.
+  const signIn = type === 'magiclink'
+  const heading = signIn ? 'Sign in to Rovelo Inc' : 'Set up your account'
+  const body = signIn
+    ? 'Click below to sign in to your Rovelo Inc client portal.'
+    : "You've been invited to Rovelo Inc. Click below to continue and set your password."
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8" />
@@ -36,8 +44,8 @@ function interstitial(token_hash: string, type: string, next: string): string {
 </head><body>
   <form class="card" method="POST" action="/auth/confirm">
     <div class="wm">rovelo<span class="dot">.inc</span></div>
-    <h1>Set up your account</h1>
-    <p>You&#39;ve been invited to Rovelo Inc. Click below to continue and set your password.</p>
+    <h1>${esc(heading)}</h1>
+    <p>${esc(body)}</p>
     <input type="hidden" name="token_hash" value="${esc(token_hash)}" />
     <input type="hidden" name="type" value="${esc(type)}" />
     <input type="hidden" name="next" value="${esc(next)}" />

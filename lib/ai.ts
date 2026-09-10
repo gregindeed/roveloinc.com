@@ -56,6 +56,72 @@ export async function assess(scope: string, context: unknown, locale?: string): 
   return text || 'No assessment returned.'
 }
 
+// The overview read, split into two granularities in one call: a one-glance
+// business "brief" (what this business is and where it stands, right now) and
+// the fuller "read" (the candid assessment with gaps/risks and the next action).
+const OVERVIEW_TOOL = {
+  name: 'record_overview_read',
+  description: "Record the Overseer's short business brief and fuller read of the entity as it currently stands.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      brief: {
+        type: 'string',
+        description:
+          'A tight 1-2 sentence business brief: what this business is and where it stands right now — the one-glance summary a partner reads at the top of the file. Plain, concrete, no preamble.',
+      },
+      read: {
+        type: 'string',
+        description:
+          'The fuller candid assessment (2-4 short sentences): what looks good, what is behind or at risk, what data is missing — ending with the single most important next action.',
+      },
+    },
+    required: ['brief', 'read'],
+  },
+}
+
+export async function assessOverview(context: unknown, locale?: string): Promise<{ brief: string; read: string }> {
+  const key = process.env.ANTHROPIC_API_KEY
+  if (!key) throw new Error('ANTHROPIC_API_KEY is not set')
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: overseerModel(),
+      max_tokens: 500,
+      system:
+        SYSTEM +
+        '\n\nFor this OVERVIEW scope you record TWO things via the tool: a very short "brief" (a one-glance business summary of what this entity is and where it stands now) and the fuller "read" (your candid assessment following the rules above). The brief is a calm summary, not an audit — save the gaps and next action for the read.' +
+        localeInstruction(locale),
+      tools: [OVERVIEW_TOOL],
+      tool_choice: { type: 'tool', name: 'record_overview_read' },
+      messages: [
+        {
+          role: 'user',
+          content: `Scope: overview\n\nEntity data snapshot (JSON):\n${JSON.stringify(context, null, 2)}\n\nRecord your short brief and full read.`,
+        },
+      ],
+    }),
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    throw new Error(`Anthropic API ${res.status}: ${t.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  const blocks = (data?.content ?? []) as { type?: string; input?: unknown }[]
+  const tool = blocks.find((b) => b.type === 'tool_use')
+  const input = (tool?.input ?? {}) as Record<string, unknown>
+  const brief = typeof input.brief === 'string' ? input.brief.trim() : ''
+  const read = typeof input.read === 'string' ? input.read.trim() : ''
+  if (!brief && !read) throw new Error('No overview read returned.')
+  return { brief, read }
+}
+
 // ---------------------------------------------------------------------------
 // Onboarding brief — the Overseer's opening read of a newly onboarded business.
 // One cheap, one-shot synthesis of the interview facts into (1) a natural read

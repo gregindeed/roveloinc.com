@@ -1,4 +1,4 @@
-const links = ['Bookkeeping', 'Financial Reporting', 'Tax Preparation', 'Payroll']
+const links = ['Bookkeeping', 'Financial Reporting', 'Tax Preparation', 'Payroll', 'Real Estate & Investments']
 
 export default function Footer() {
   return (

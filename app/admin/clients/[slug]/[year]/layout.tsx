@@ -6,10 +6,14 @@ import ClientTabs from '@/components/ClientTabs'
 import EntityQuickBar from '@/components/EntityQuickBar'
 import GlobalIntake from '@/components/GlobalIntake'
 import AvatarStack from '@/components/AvatarStack'
-import YearManager from '@/components/YearManager'
+import YearControl from '@/components/YearControl'
+import OverseerBrief from '@/components/OverseerBrief'
 import { getViewer } from '@/lib/auth'
 import { entityPresence } from '@/lib/presenceServer'
 import { getClientYears } from '@/lib/yearsServer'
+import { getLocale } from '@/lib/i18n-server'
+import { t } from '@/lib/i18n'
+import { localizedAssessment } from '@/lib/assessmentL10n'
 import { FILING_STATUS_LABELS } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -32,12 +36,34 @@ export default async function YearLayout({
   const { data: c } = await supabase.from('clients').select('*').eq('slug', params.slug).single()
   if (!c) notFound()
 
-  const [presence, years] = await Promise.all([
+  const [presence, years, { data: assessment }] = await Promise.all([
     entityPresence(createAdminClient(), [c.id as string], { excludeUserId: user?.id }),
     getClientYears(supabase, c.id as string),
+    supabase
+      .from('ai_assessments')
+      .select('brief, content, created_at, source_lang, translations')
+      .eq('client_id', c.id)
+      .eq('scope', 'overview')
+      .maybeSingle(),
   ])
   const here = presence.get(c.id as string) ?? []
   const canManage = viewer?.role === 'admin'
+  const locale = getLocale()
+  const isClosed = years.find((y) => y.year === year)?.status === 'closed'
+
+  // The Overseer read, in the viewer's language (translate + cache on first view).
+  const overseerRead = assessment
+    ? await localizedAssessment(
+        {
+          client_id: c.id as string,
+          scope: 'overview',
+          content: assessment.content,
+          source_lang: assessment.source_lang ?? null,
+          translations: assessment.translations ?? null,
+        },
+        locale
+      )
+    : null
 
   return (
     <>
@@ -47,9 +73,7 @@ export default async function YearLayout({
       <div className="mt-3 flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-gray-900">
-              {c.name} <span className="text-gray-400 font-medium tabular-nums">· {year}</span>
-            </h1>
+            <h1 className="text-xl font-bold text-gray-900">{c.name}</h1>
             {here.length > 0 && <AvatarStack users={here} size={24} />}
           </div>
           <p className="text-sm text-gray-600 mt-0.5">
@@ -68,6 +92,8 @@ export default async function YearLayout({
           )}
         </div>
         <div className="flex items-center gap-2 whitespace-nowrap">
+          <YearControl slug={c.slug} years={years} selectedYear={year} canManage={canManage} />
+          <span className="h-6 w-px bg-gray-200 mx-0.5" />
           <GlobalIntake
             slug={c.slug}
             year={year}
@@ -100,8 +126,20 @@ export default async function YearLayout({
         </div>
       </div>
 
-      <div className="mt-4">
-        <YearManager slug={c.slug} years={years} selectedYear={year} canManage={canManage} />
+      {isClosed && (
+        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-3.5 py-2 text-xs text-gray-600">
+          {t(locale, 'year.closedBanner')}
+        </div>
+      )}
+
+      <div className="mt-5">
+        <OverseerBrief
+          slug={c.slug}
+          brief={assessment?.brief ?? null}
+          read={overseerRead ?? assessment?.content ?? null}
+          context={c.overseer_context}
+          createdAt={assessment?.created_at ?? null}
+        />
       </div>
 
       <ClientTabs slug={c.slug} year={year} kind={c.kind} />

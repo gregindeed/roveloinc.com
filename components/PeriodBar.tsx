@@ -26,15 +26,17 @@ export default function PeriodBar() {
 
   const isFullYear = !q && !month && !day
   const btn = (active: boolean) =>
-    `px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${
-      active ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+    `px-2 py-1 text-[11px] font-medium rounded-md transition-colors ${
+      active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'
     }`
   const inputCls =
-    'border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white'
+    'border border-gray-200 rounded-md px-2 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent bg-white'
 
+  // A light, borderless control meant to sit on a section header — no framing
+  // box, just a quiet segmented pill plus month/day pickers.
   return (
-    <div className="flex flex-wrap items-center gap-2 border border-gray-200 rounded-xl px-3 py-2">
-      <div className="flex items-center gap-0.5 bg-gray-50 rounded-lg p-0.5">
+    <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
         <button className={btn(isFullYear)} onClick={() => apply({ q: null, month: null, day: null })}>
           Full year
         </button>
@@ -49,11 +51,7 @@ export default function PeriodBar() {
         ))}
       </div>
 
-      <select
-        value={month ?? ''}
-        onChange={(e) => apply({ month: e.target.value || null, q: null, day: null })}
-        className={inputCls}
-      >
+      <select value={month ?? ''} onChange={(e) => apply({ month: e.target.value || null, q: null, day: null })} className={inputCls}>
         <option value="">Month…</option>
         {MON.map((m, i) => (
           <option key={m} value={String(i + 1)}>
@@ -70,10 +68,7 @@ export default function PeriodBar() {
       />
 
       {!isFullYear && (
-        <button
-          onClick={() => apply({ q: null, month: null, day: null })}
-          className="text-xs text-gray-400 hover:text-gray-700 ml-auto"
-        >
+        <button onClick={() => apply({ q: null, month: null, day: null })} className="text-[11px] text-gray-400 hover:text-gray-700">
           Reset
         </button>
       )}

@@ -1,4 +1,4 @@
-import { invitePortalClient } from '@/app/admin/clients/[slug]/portal-actions'
+import { invitePortalClient, sendPortalMagicLink, sendPortalPasswordReset } from '@/app/admin/clients/[slug]/portal-actions'
 
 export default function PortalAccessPanel({
   slug,
@@ -24,9 +24,30 @@ export default function PortalAccessPanel({
             <span className="text-sm text-gray-900 font-medium">{portalEmail}</span>
           </div>
           <p className="text-xs text-gray-500 mt-1.5">Portal login is active for this entity.</p>
+
+          {/* Help the client get in — sends to the address above. */}
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <div className="flex flex-wrap gap-2">
+              <form action={sendPortalMagicLink.bind(null, slug)}>
+                <button className="rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors">
+                  Email sign-in link
+                </button>
+              </form>
+              <form action={sendPortalPasswordReset.bind(null, slug)}>
+                <button className="rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors">
+                  Send password reset
+                </button>
+              </form>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-2">
+              The sign-in link logs them straight into the portal — no password needed. Password reset lets them set a new one.
+            </p>
+          </div>
+
+          {/* Point the login at a different email. */}
           <form action={invitePortalClient.bind(null, slug)} className="mt-3 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3">
             <div>
-              <label className="block text-[11px] text-gray-500 mb-1">Re-send / change email</label>
+              <label className="block text-[11px] text-gray-500 mb-1">Change email</label>
               <input
                 name="email"
                 type="email"
@@ -35,7 +56,7 @@ export default function PortalAccessPanel({
               />
             </div>
             <button className="text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors">
-              Send invite
+              Update &amp; invite
             </button>
           </form>
         </div>

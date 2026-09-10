@@ -2,12 +2,9 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PeriodBar from '@/components/PeriodBar'
 import { FinancialSummary } from '@/components/Financials'
-import OverviewCommand from '@/components/OverviewCommand'
 import { gatherAndCompute, persistState } from '@/lib/entityStateServer'
 import { parsePeriod, inPeriod } from '@/lib/period'
 import Link from 'next/link'
-import { getLocale } from '@/lib/i18n-server'
-import { localizedAssessment } from '@/lib/assessmentL10n'
 import { computeIncome, type W2Income, type Income1099, type ScheduleC, type ScheduleE } from '@/lib/income'
 import type { Client, Deposit, CheckingExpense, CCTransaction, Account } from '@/lib/types'
 
@@ -30,17 +27,11 @@ export default async function Overview({
   const year = Number(params.year)
   const period = parsePeriod({ ...searchParams, year: params.year }, year)
 
-  const [{ data: deposits }, { data: checking }, { data: cc }, { data: assessment }, { data: accounts }] =
+  const [{ data: deposits }, { data: checking }, { data: cc }, { data: accounts }] =
     await Promise.all([
       supabase.from('deposits').select('*').eq('client_id', c.id).order('txn_date'),
       supabase.from('checking_expenses').select('*').eq('client_id', c.id).order('txn_date'),
       supabase.from('cc_transactions').select('*').eq('client_id', c.id).order('post_date'),
-      supabase
-        .from('ai_assessments')
-        .select('content, model, created_at, source_lang, translations')
-        .eq('client_id', c.id)
-        .eq('scope', 'overview')
-        .maybeSingle(),
       supabase.from('chart_of_accounts').select('*').eq('client_id', c.id).order('code'),
     ])
 
@@ -48,27 +39,11 @@ export default async function Overview({
   const chk = ((checking ?? []) as CheckingExpense[]).filter((r) => inPeriod(r.txn_date, period))
   const card = ((cc ?? []) as CCTransaction[]).filter((r) => inPeriod(r.post_date, period))
 
+  // The readiness snapshot is still computed + persisted here so the clients
+  // roster's attention view stays fresh (the Overseer card now lives in the
+  // year layout, above the tabs).
   const state = await gatherAndCompute(supabase, c)
   await persistState(supabase, c.id, state)
-
-  // Show the Overseer read in the viewer's language (translate + cache on first
-  // view in a new language).
-  const locale = getLocale()
-  const overviewRead = assessment
-    ? await localizedAssessment(
-        {
-          client_id: c.id,
-          scope: 'overview',
-          content: assessment.content,
-          source_lang: assessment.source_lang ?? null,
-          translations: assessment.translations ?? null,
-        },
-        locale
-      )
-    : null
-  const overviewAssessment = assessment
-    ? { content: overviewRead ?? assessment.content, model: assessment.model, created_at: assessment.created_at }
-    : null
 
   // For individuals, total the structured income lines for this year so the
   // overview shows a real income picture instead of a placeholder.
@@ -101,7 +76,6 @@ export default async function Overview({
           {searchParams.warn}
         </div>
       )}
-      <OverviewCommand slug={c.slug} state={state} assessment={overviewAssessment} context={c.overseer_context} />
       {c.kind === 'individual' ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -151,21 +125,23 @@ export default async function Overview({
           )}
         </div>
       ) : (
-        <>
-          <PeriodBar />
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">Summary · {period.label}</h2>
-            <FinancialSummary
-              deposits={dep}
-              checking={chk}
-              cc={card}
-              accounts={(accounts ?? []) as Account[]}
-              periodLabel={period.label}
-              slug={c.slug}
-              year={year}
-            />
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold text-gray-900">
+              Summary <span className="font-normal text-gray-400">· {period.label}</span>
+            </h2>
+            <PeriodBar />
           </div>
-        </>
+          <FinancialSummary
+            deposits={dep}
+            checking={chk}
+            cc={card}
+            accounts={(accounts ?? []) as Account[]}
+            periodLabel={period.label}
+            slug={c.slug}
+            year={year}
+          />
+        </div>
       )}
     </div>
   )
