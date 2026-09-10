@@ -66,6 +66,59 @@ async function buildOverviewContext(
   if (!c.formation_date) missing.push('formation_date')
   if ((officers ?? []).length === 0) missing.push('officers/ownership')
 
+  // Real estate this entity owns (property-management module). Folded into the
+  // context so the Overseer's read of the entity is fortified with its property
+  // picture — including the free-text notes on each property.
+  let real_estate:
+    | {
+        properties_count: number
+        units_total: number
+        units_occupied: number
+        monthly_rent_roll: number
+        outstanding_this_month: number
+        properties: { name: string; address: string | null; type: string; units: number; occupied: number; monthly_rent: number; notes: string | null }[]
+      }
+    | undefined
+  const { data: props } = await supabase
+    .from('properties')
+    .select('id, name, address, type, notes')
+    .eq('client_id', c.id)
+    .is('archived_at', null)
+  if ((props ?? []).length) {
+    const propList = props ?? []
+    const propIds = propList.map((p) => p.id as string)
+    const monthStr = `${now}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`
+    const [{ data: units }, { data: leases }, { data: charges }] = await Promise.all([
+      supabase.from('units').select('id, property_id').in('property_id', propIds),
+      supabase.from('leases').select('property_id, rent_amount, status').in('property_id', propIds),
+      supabase.from('rent_charges').select('amount_due, amount_paid, status, period_month').eq('client_id', c.id),
+    ])
+    const U = units ?? []
+    const activeLeases = (leases ?? []).filter((l) => l.status === 'active')
+    const monthCharges = (charges ?? []).filter((ch) => String(ch.period_month).slice(0, 10) === monthStr && ch.status !== 'waived')
+    const outstanding = monthCharges.reduce((s, ch) => s + Math.max(Number(ch.amount_due || 0) - Number(ch.amount_paid || 0), 0), 0)
+    real_estate = {
+      properties_count: propList.length,
+      units_total: U.length,
+      units_occupied: activeLeases.length,
+      monthly_rent_roll: round(activeLeases.reduce((s, l) => s + Number(l.rent_amount || 0), 0)),
+      outstanding_this_month: round(outstanding),
+      properties: propList.map((p) => {
+        const pid = p.id as string
+        const pleases = activeLeases.filter((l) => l.property_id === pid)
+        return {
+          name: p.name as string,
+          address: (p.address as string | null) ?? null,
+          type: p.type as string,
+          units: U.filter((u) => u.property_id === pid).length,
+          occupied: pleases.length,
+          monthly_rent: round(pleases.reduce((s, l) => s + Number(l.rent_amount || 0), 0)),
+          notes: (p.notes as string | null) ?? null,
+        }
+      }),
+    }
+  }
+
   return {
     entity: {
       name: c.name,
@@ -92,6 +145,7 @@ async function buildOverviewContext(
       obligations: (obligations ?? []).map((o) => ({ label: o.label, agency: o.agency })),
     },
     documents: { count: (documents ?? []).length },
+    ...(real_estate ? { real_estate } : {}),
     missing_fields: missing,
   }
 }

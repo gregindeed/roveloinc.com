@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { recomputeAndPersist } from '@/lib/entityStateServer'
 import { deriveAttention, type StateRow } from '@/lib/brief'
 import { sendEmail, firmDigestEmailHtml, type DigestItem } from '@/lib/email'
+import { sendRentReminders } from '@/lib/rentReminders'
 import type { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -103,5 +104,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ recomputed: active.length, firmsNotified, emailsSent })
+  // 4) Rent reminders: email tenants whose rent is coming due or overdue, with
+  //    the property's payment instructions. De-duped so nobody gets spammed.
+  const reminders = await sendRentReminders(admin, base)
+
+  return NextResponse.json({
+    recomputed: active.length,
+    firmsNotified,
+    emailsSent,
+    rentReminders: reminders.sent,
+  })
 }

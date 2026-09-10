@@ -161,6 +161,9 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   // partner managers get a direct New Account instead.
   const navActions = (
     <>
+      <Link href="/admin/properties" className={navAction}>
+        Properties
+      </Link>
       {isPlatform ? (
         <Link href="/admin/firms/new" className={navAction}>
           <Plus className="h-3 w-3 text-gray-400" /> {t(locale, 'admin.newFirm')}
