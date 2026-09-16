@@ -16,12 +16,21 @@ export default function UserMenu({
   email,
   avatarUrl,
   settingsHref,
+  newFirmHref,
+  newFirmLabel,
+  importHref,
 }: {
   name: string
   handle: string
   email?: string | null
   avatarUrl?: string | null
   settingsHref?: string | null
+  // A manager-only "New firm" action, tucked into the menu rather than the open
+  // nav bar. Rendered only when a link is provided (platform admins).
+  newFirmHref?: string | null
+  newFirmLabel?: string
+  // "Import data" — a global importer, available to any worker.
+  importHref?: string | null
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -82,6 +91,27 @@ export default function UserMenu({
               {email && <div className="text-[11px] text-gray-400 truncate">{email}</div>}
             </div>
           </div>
+
+          {(newFirmHref || importHref) && (
+            <div className="border-b border-gray-100 py-1">
+              {newFirmHref && (
+                <Link href={newFirmHref} role="menuitem" className={itemCls} onClick={() => setOpen(false)}>
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01" />
+                  </svg>
+                  {newFirmLabel || 'New firm'}
+                </Link>
+              )}
+              {importHref && (
+                <Link href={importHref} role="menuitem" className={itemCls} onClick={() => setOpen(false)}>
+                  <svg viewBox="0 0 24 24" className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v12M8 11l4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+                  </svg>
+                  Import data
+                </Link>
+              )}
+            </div>
+          )}
 
           <div className="py-1">
             <Link href="/settings/profile" role="menuitem" className={itemCls} onClick={() => setOpen(false)}>

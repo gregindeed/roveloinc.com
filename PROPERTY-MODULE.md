@@ -72,6 +72,32 @@ Invoice/receipt numbers come from Postgres sequences (`rent_invoice_seq`, `rent_
 ### Google Maps setup
 The Maps key lives in `NEXT_PUBLIC_GOOGLE_MAPS_KEY` (already in `.env.local`). For it to work, the key needs these APIs enabled in Google Cloud: **Maps JavaScript API** + **Places API** (address autocomplete), **Street View Static API** and **Maps Static API** (the photos). Add the same `NEXT_PUBLIC_GOOGLE_MAPS_KEY` to your **Cloudflare** project env vars so it works in production too (it's a public/browser key, so exposure is expected — just restrict it by HTTP referrer in Google Cloud).
 
+## Phase 2 — tenant profiles, documents, Overseer extraction (added)
+
+- **Full tenant profiles.** Each occupied unit has a "Tenant profile" section: DOB, current/mailing address, employer, monthly income, emergency contact, ID type, and **SSN**. The SSN is **encrypted at rest** with `lib/crypto` (AES-256-GCM, the same `PLAID_TOKEN_KEY` used for Plaid tokens); only the last 4 are kept in clear for display (`•••-••-1234`). Leaving the SSN field blank keeps the stored value.
+- **Documents per property / unit.** Upload lease agreements, IDs, applications, insurance, inspections, etc. (PDF/image/any, ≤15MB). Files go to the existing `client-docs` bucket under `<client_id>/property/<property_id>/…`, so the storage RLS already covers them. Each doc can be tied to a specific unit.
+- **Overseer extraction.** "Overseer read" on a document hands Anthropic a short-lived signed URL (same mechanism as the entity document parser) and pulls out property/unit/lease facts — square footage, beds/baths, year built, lot size, APN, rent, lease dates. It **fills only empty fields** (never overwrites what you've entered): property facts onto the property, unit facts onto the doc's linked unit. The extraction is also stored on the document for reference.
+
+New file `supabase/property-tenants-docs.sql` adds `tenant_profiles` and `property_documents` (+ RLS). New `lib/propertyAi.ts` holds the parser. This needs `ANTHROPIC_API_KEY` and `PLAID_TOKEN_KEY` (both already in your env) and the `client-docs` bucket (already created by `documents.sql`).
+
+## Phase 4 — tenant messaging (added)
+
+- **Message a tenant.** Each occupied unit has a "Messages" thread. Composing a message **emails the tenant** (branded, via your Resend setup) and logs it to the thread. Sending is disabled until the lease has a tenant email.
+- **A running thread.** Outbound emails and manually-logged received messages both appear in one per-lease thread (sent messages align right/grey, received left), with timestamps.
+- **Receiving.** There's no automated inbound yet (that needs SMS or inbound-email infra — a later add), so "Log a message you received" records what a tenant told you by phone/text/in person, keeping the thread two-sided.
+
+This lives in the `tenant_messages` table, appended to `supabase/property-tenants-docs.sql` (re-run it — it's idempotent). No new env or services beyond the Resend key you already use for rent reminders/receipts.
+
+## Phase 3 — rental applications (added)
+
+- **Invite a prospect.** On a property, "Applications" lets you email a prospect a private application link for a chosen unit. Creates an invite with an unguessable token.
+- **Public application form.** The prospect opens `/apply/<token>` — a clean, **login-free** page — and fills out contact, income, occupants, pets/vehicles, prior landlord, references, optional SSN (encrypted at rest), and a background-check consent. The submit runs with the service-role client, gated only by the token (RLS governs the manager side).
+- **Review & approve.** Submitted applications show up under the property with a masked-SSN detail view. **Approve** converts the application into a live **lease + tenant profile** (carrying the encrypted SSN straight over) on the applied-for unit, starting rent from the unit's market rent; **Decline** closes it out.
+
+New file `supabase/property-applications.sql` adds the `rental_applications` table (+ RLS). New public route `app/apply/[token]/` and `app/apply/actions.ts`. `/apply/*` is public because your middleware only guards `/admin` and `/portal`.
+
+Also in this pass: the **"Add a unit" form now has a Sqft field** (it was only on the *edit* form before), so you can set a unit's usable square footage at creation. Square footage is per-unit (the housing size); `lot_size` on the property is the land.
+
 ## Activate it (in this order)
 
 1. **Run the SQL.** Open Supabase → SQL editor → paste `supabase/properties.sql` → run. It needs the helper functions from `access.sql`, which are already in your DB. Safe to re-run.

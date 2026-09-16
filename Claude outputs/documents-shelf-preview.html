@@ -1,0 +1,59 @@
+<title>Documents Shelf</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #fff; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #111827; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 56px; }
+  .h2 { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 0 0 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border: 1px solid #e5e7eb; border-radius: 9999px; padding: 4px 12px; font-size: 12px; font-weight: 500; color: #4b5563; cursor: pointer; }
+  .chip.on { background: #111827; border-color: #111827; color: #fff; }
+  .chip .n { opacity: .6; }
+  .search { margin-top: 12px; width: 100%; box-sizing: border-box; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+  .list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .row { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; }
+  .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .name { font-size: 14px; font-weight: 500; color: #111827; }
+  .meta { font-size: 11px; color: #9ca3af; margin: 2px 0 0; }
+  .tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; border: 1px solid; border-radius: 9999px; padding: 2px 8px; white-space: nowrap; }
+  .receipt { background: #f0fdf4; color: #15803d; border-color: #dcfce7; }
+  .invoice { background: #fffbeb; color: #b45309; border-color: #fef3c7; }
+  .statement { background: #eff6ff; color: #1d4ed8; border-color: #dbeafe; }
+  .lease { background: #faf5ff; color: #7e22ce; border-color: #f3e8ff; }
+  .photo { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
+  .actions { display: flex; gap: 12px; font-size: 11px; white-space: nowrap; }
+  .actions a, .actions span { color: #4b5563; font-weight: 500; text-decoration: none; }
+  .del { color: #9ca3af !important; font-weight: 400 !important; }
+  .cap { font-size: 12px; color: #9ca3af; margin: 0 0 20px; }
+</style>
+<div class="wrap">
+  <p class="cap">Documents shelf — category chips (data-driven, with counts) + search + colored type tags + download. Receipts &amp; invoices now land here automatically when you record a payment or send an invoice.</p>
+  <p class="h2">Documents</p>
+
+  <div class="chips">
+    <span class="chip on">All <span class="n">7</span></span>
+    <span class="chip">Receipt <span class="n">3</span></span>
+    <span class="chip">Invoice <span class="n">2</span></span>
+    <span class="chip">Statement <span class="n">1</span></span>
+    <span class="chip">Photo <span class="n">1</span></span>
+  </div>
+  <input class="search" placeholder="Search documents…" />
+
+  <div class="list">
+    <div class="row"><div class="top">
+      <div><div style="display:flex;align-items:center;gap:8px"><span class="name">Receipt RCPT-24801 · January 2026</span><span class="tag receipt">Receipt</span></div><p class="meta">Jan 28, 2026</p></div>
+      <div class="actions"><a href="#">Download</a><span>Overseer read</span><span class="del">Delete</span></div>
+    </div></div>
+    <div class="row"><div class="top">
+      <div><div style="display:flex;align-items:center;gap:8px"><span class="name">Invoice INV-24810 · February 2026</span><span class="tag invoice">Invoice</span></div><p class="meta">Feb 1, 2026</p></div>
+      <div class="actions"><a href="#">Download</a><span>Overseer read</span><span class="del">Delete</span></div>
+    </div></div>
+    <div class="row"><div class="top">
+      <div><div style="display:flex;align-items:center;gap:8px"><span class="name">Statement · January 2026</span><span class="tag statement">Statement</span></div><p class="meta">Jan 31, 2026</p></div>
+      <div class="actions"><a href="#">Download</a><span>Overseer read</span><span class="del">Delete</span></div>
+    </div></div>
+    <div class="row"><div class="top">
+      <div><div style="display:flex;align-items:center;gap:8px"><span class="name">Lease agreement — 2025.pdf</span><span class="tag lease">Lease agreement</span></div><p class="meta">Oct 1, 2025 · read by Overseer</p></div>
+      <div class="actions"><a href="#">Download</a><span>Overseer read</span><span class="del">Delete</span></div>
+    </div></div>
+  </div>
+</div>

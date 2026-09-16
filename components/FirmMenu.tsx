@@ -2,10 +2,12 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { useT } from './I18nProvider'
 
 // A quiet three-dot menu on a firm — the home for firm-scoped actions:
 // onboarding an account into it, and (for platform) its properties.
 export default function FirmMenu({ firmId, canManage }: { firmId: string; canManage: boolean }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -52,6 +54,17 @@ export default function FirmMenu({ firmId, canManage }: { firmId: string; canMan
               <path d="M12 5v14M5 12h14" />
             </svg>
             New individual
+          </Link>
+          <Link
+            href={`/admin/leads/new?org=${firmId}`}
+            className="flex items-center gap-2 px-3 py-1.5 text-gray-700 hover:bg-gray-50"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="3.2" />
+              <path d="M19 8v6M22 11h-6" />
+            </svg>
+            {t('admin.addLead')}
           </Link>
           {canManage && (
             <Link href={`/admin/firms/${firmId}`} className="flex items-center gap-2 px-3 py-1.5 text-gray-700 hover:bg-gray-50">

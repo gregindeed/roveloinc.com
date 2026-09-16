@@ -29,16 +29,23 @@ export default function PropertyAddressInput({
   labelClassName,
   inputClassName,
   defaultValue = '',
+  defaultLat = null,
+  defaultLng = null,
+  defaultPlaceId = null,
 }: {
   labelClassName: string
   inputClassName: string
   defaultValue?: string
+  // Existing coordinates (edit mode) — preserved unless the address is retyped.
+  defaultLat?: number | null
+  defaultLng?: number | null
+  defaultPlaceId?: string | null
 }) {
   const key = mapsKey()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [lat, setLat] = useState('')
-  const [lng, setLng] = useState('')
-  const [placeId, setPlaceId] = useState('')
+  const [lat, setLat] = useState(defaultLat != null ? String(defaultLat) : '')
+  const [lng, setLng] = useState(defaultLng != null ? String(defaultLng) : '')
+  const [placeId, setPlaceId] = useState(defaultPlaceId ?? '')
 
   useEffect(() => {
     if (!key || !inputRef.current) return

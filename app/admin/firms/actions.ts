@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail, teamInviteEmailHtml } from '@/lib/email'
-import { requirePlatform } from '@/lib/auth'
+import { requirePlatform, getViewer } from '@/lib/auth'
 
 function siteUrl() {
   const host = headers().get('host') ?? 'localhost:3000'
@@ -175,4 +175,30 @@ export async function inviteFirmManager(orgId: string, formData: FormData) {
   revalidatePath('/admin/firms')
   if (!r.ok) back('error', r.error)
   else back('ok', r.existed ? `${email} already had an account and was added to this firm as a manager.` : `Invite sent to ${email}.`)
+}
+
+// Turn the Property Management module on/off for a firm. Off by default. A
+// platform admin can toggle any firm; a firm's owner can toggle their own.
+export async function setFirmPropertyModule(orgId: string, formData: FormData) {
+  const viewer = await getViewer()
+  if (!viewer) redirect('/login')
+  const backTo = String(formData.get('back') || '/admin')
+  const allowed =
+    viewer.isPlatform || (viewer.isOwner && (viewer.orgId === orgId || viewer.firms.some((f) => f.orgId === orgId)))
+  if (!allowed) redirect('/admin')
+
+  const enabled = String(formData.get('enabled') || '') === 'on'
+  const { error } = await createAdminClient()
+    .from('organizations')
+    .update({ property_module: enabled })
+    .eq('id', orgId)
+
+  revalidatePath(backTo)
+  const sep = backTo.includes('?') ? '&' : '?'
+  if (error) redirect(`${backTo}${sep}error=${encodeURIComponent(error.message)}`)
+  redirect(
+    `${backTo}${sep}ok=${encodeURIComponent(
+      enabled ? 'Property Management is now enabled for this firm.' : 'Property Management is now disabled for this firm.'
+    )}`
+  )
 }

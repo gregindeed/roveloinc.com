@@ -31,6 +31,7 @@ create table if not exists public.properties (
   lng         numeric(9,6),                         -- geocoded longitude
   type        text not null default 'residential'  -- residential | commercial | mixed | land
               check (type in ('residential','commercial','mixed','land')),
+  multi_unit  boolean not null default false,       -- false = single-family/one rental; true = multi-unit building
   notes       text,
   -- How tenants pay — shown on invoices, reminders, and receipts. Any subset.
   pay_zelle   text,                                -- Zelle email / phone
@@ -40,6 +41,14 @@ create table if not exists public.properties (
   -- Automated rent reminders (sent by the daily cron).
   auto_reminders    boolean not null default true,
   reminder_lead_days integer not null default 5,   -- send the first reminder N days before due
+  -- Standing facts (editable; the Overseer can also fill these from documents).
+  year_built     integer,
+  lot_size       text,                             -- e.g. "0.25 acres" / "7,200 sqft"
+  parcel_number  text,                             -- county APN
+  -- Valuation / basis (for $/sqft + gross-yield metrics).
+  est_value      numeric(14,2),                    -- current estimated market value
+  purchase_price numeric(14,2),                    -- what the owner paid
+  purchase_date  date,
   archived_at timestamptz,
   created_at  timestamptz not null default now()
 );
@@ -54,6 +63,13 @@ alter table public.properties add column if not exists reminder_lead_days intege
 alter table public.properties add column if not exists place_id text;
 alter table public.properties add column if not exists lat numeric(9,6);
 alter table public.properties add column if not exists lng numeric(9,6);
+alter table public.properties add column if not exists year_built integer;
+alter table public.properties add column if not exists lot_size text;
+alter table public.properties add column if not exists parcel_number text;
+alter table public.properties add column if not exists est_value numeric(14,2);
+alter table public.properties add column if not exists purchase_price numeric(14,2);
+alter table public.properties add column if not exists purchase_date date;
+alter table public.properties add column if not exists multi_unit boolean not null default false;
 
 -- ── units ───────────────────────────────────────────────────────────────────
 create table if not exists public.units (

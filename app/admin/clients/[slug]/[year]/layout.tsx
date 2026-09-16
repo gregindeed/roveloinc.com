@@ -14,7 +14,6 @@ import { getClientYears } from '@/lib/yearsServer'
 import { getLocale } from '@/lib/i18n-server'
 import { t } from '@/lib/i18n'
 import { localizedAssessment } from '@/lib/assessmentL10n'
-import { FILING_STATUS_LABELS } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,6 +49,8 @@ export default async function YearLayout({
   const canManage = viewer?.role === 'admin'
   const locale = getLocale()
   const isClosed = years.find((y) => y.year === year)?.status === 'closed'
+  // For individuals the owner_name repeats the entity name — drop it when equal.
+  const ownerLine = c.owner_name && c.owner_name !== c.name ? c.owner_name : null
 
   // The Overseer read, in the viewer's language (translate + cache on first view).
   const overseerRead = assessment
@@ -76,20 +77,13 @@ export default async function YearLayout({
             <h1 className="text-xl font-bold text-gray-900">{c.name}</h1>
             {here.length > 0 && <AvatarStack users={here} size={24} />}
           </div>
-          <p className="text-sm text-gray-600 mt-0.5">
-            {c.owner_name ? `${c.owner_name} · ` : ''}
-            {c.address ?? ''}
-          </p>
-          {c.kind === 'individual' ? (
-            <p className="text-xs mt-2">
-              <span className="text-gray-500">Individual</span>
-              {c.filing_status && (
-                <span className="text-gray-900 font-medium"> · {FILING_STATUS_LABELS[c.filing_status] ?? c.filing_status}</span>
-              )}
+          {(ownerLine || c.address) && (
+            <p className="text-sm text-gray-600 mt-0.5">
+              {ownerLine ? `${ownerLine}${c.address ? ' · ' : ''}` : ''}
+              {c.address ?? ''}
             </p>
-          ) : (
-            <EntityQuickBar c={c} />
           )}
+          <EntityQuickBar c={c} />
         </div>
         <div className="flex items-center gap-2 whitespace-nowrap">
           <YearControl slug={c.slug} years={years} selectedYear={year} canManage={canManage} />

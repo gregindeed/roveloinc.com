@@ -5,7 +5,9 @@ import AuthHeader from '@/components/AuthHeader'
 import { type RosterRow } from '@/components/ClientRoster'
 import AdminDashboard, { type FirmLite } from '@/components/AdminDashboard'
 import { getViewer } from '@/lib/auth'
-import { getRecentEntities } from '@/lib/recentsServer'
+import { canUsePropertyModule } from '@/lib/propertyAccess'
+import { getLeads } from '@/lib/leadsServer'
+import { setLeadStage, convertLead, deleteLead } from './leads/actions'
 import { entityPresence } from '@/lib/presenceServer'
 import { deriveAttention, type StateRow } from '@/lib/brief'
 import { ENTITY_TYPE_LABELS, type Client, type EntityType, type Organization } from '@/lib/types'
@@ -29,13 +31,18 @@ function Plus({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   )
 }
 
-export default async function AdminHome({ searchParams }: { searchParams: { ok?: string } }) {
+export default async function AdminHome({ searchParams }: { searchParams: { ok?: string; error?: string; tab?: string } }) {
   const locale = getLocale()
   const supabase = createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   const viewer = await getViewer()
+  const leads = viewer ? await getLeads(viewer) : []
+  const initialTab =
+    searchParams.tab === 'leads' || searchParams.tab === 'business' || searchParams.tab === 'individual'
+      ? searchParams.tab
+      : undefined
 
   const [
     { data: clients },
@@ -155,26 +162,29 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   const sharedRows = list.filter((c) => !c.org_id || !shownOrgIds.has(c.org_id))
 
   const firmLites: FirmLite[] = firmsWithRows.map((f) => ({ id: f.id, name: f.name, isPlatform: !!f.is_platform }))
-  const recents = user ? await getRecentEntities(supabase, user.id, 6) : []
 
   // Top-nav actions: New Firm is the highest-level action (platform only);
   // partner managers get a direct New Account instead.
-  const navActions = (
-    <>
-      <Link href="/admin/properties" className={navAction}>
-        Properties
+  // "New firm" (platform) now lives in the account menu (see AuthHeader/UserMenu),
+  // so it's not out in the open. Regular managers keep "New account" here. Null
+  // (not an empty fragment) when there's nothing, so AuthHeader shows no divider.
+  const navActions =
+    !isPlatform && viewer?.role === 'admin' ? (
+      <Link href="/admin/new/guided" className={navAction}>
+        <Plus className="h-3 w-3 text-gray-400" /> {t(locale, 'admin.newAccount')}
       </Link>
-      {isPlatform ? (
-        <Link href="/admin/firms/new" className={navAction}>
-          <Plus className="h-3 w-3 text-gray-400" /> {t(locale, 'admin.newFirm')}
-        </Link>
-      ) : viewer?.role === 'admin' ? (
-        <Link href="/admin/new/guided" className={navAction}>
-          <Plus className="h-3 w-3 text-gray-400" /> {t(locale, 'admin.newAccount')}
-        </Link>
-      ) : null}
-    </>
-  )
+    ) : null
+
+  // Left-side section nav, sitting next to the "Admin" label in the same style.
+  // Leads now lives in the dashboard's Businesses/Individuals/Leads control, so
+  // it's not repeated here. Property Management only appears for viewers whose
+  // firm has the module enabled (or who hold a per-property grant).
+  const canProperties = await canUsePropertyModule(viewer)
+  const sectionNav = canProperties ? (
+    <Link href="/admin/properties" className="text-xs font-medium text-gray-500 hover:text-gray-900 tracking-wide transition-colors">
+      Property Management
+    </Link>
+  ) : null
 
   return (
     <div className="min-h-screen bg-white">
@@ -182,12 +192,18 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
         label={t(locale, 'admin.adminNav')}
         email={user?.email}
         settingsHref={viewer?.isOwner ? '/admin/team' : null}
+        navLeft={sectionNav}
         actions={navActions}
       />
       <main className="max-w-5xl mx-auto px-6 py-10">
         {searchParams.ok && (
           <div className="mb-5 rounded-lg border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-green-800">
             {searchParams.ok}
+          </div>
+        )}
+        {searchParams.error && (
+          <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-800">
+            {searchParams.error}
           </div>
         )}
 
@@ -210,9 +226,15 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
             rows={toRows(list)}
             sharedRows={toRows(sharedRows)}
             archivedRows={toRows(archived)}
-            recents={recents}
             viewerRole={viewer?.role ?? null}
             isPlatform={isPlatform}
+            leads={leads}
+            canConvertLeads={viewer?.role === 'admin'}
+            importHref="/admin/import"
+            initialTab={initialTab}
+            setLeadStage={setLeadStage}
+            convertLead={convertLead}
+            deleteLead={deleteLead}
           />
         )}
       </main>

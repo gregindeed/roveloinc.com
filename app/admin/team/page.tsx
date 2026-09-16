@@ -3,6 +3,7 @@ import AuthHeader from '@/components/AuthHeader'
 import TeamManager from '@/components/TeamManager'
 import SettingsShell from '@/components/SettingsShell'
 import { requireOwner } from '@/lib/auth'
+import { setFirmPropertyModule } from '../firms/actions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isOnline } from '@/lib/presence'
 import { getLocale } from '@/lib/i18n-server'
@@ -16,12 +17,16 @@ export default async function TeamPage({ searchParams }: { searchParams: { ok?: 
   const locale = getLocale()
   const admin = createAdminClient()
 
-  const [{ data: userList }, { data: profiles }, { data: grants }, { data: clients }] = await Promise.all([
+  const [{ data: userList }, { data: profiles }, { data: grants }, { data: clients }, { data: org }] = await Promise.all([
     admin.auth.admin.listUsers(),
     admin.from('profiles').select('id, role, is_owner, display_name, last_seen_at'),
     admin.from('entity_access').select('user_id, client_id'),
     admin.from('clients').select('id, name').order('name'),
+    viewer.orgId
+      ? admin.from('organizations').select('id, property_module').eq('id', viewer.orgId).maybeSingle()
+      : Promise.resolve({ data: null }),
   ])
+  const propertyModuleOn = !!(org as { property_module?: boolean } | null)?.property_module
 
   const emailById = new Map((userList?.users ?? []).map((u) => [u.id, u.email ?? '(no email)']))
   const grantsByUser = new Map<string, string[]>()
@@ -84,11 +89,37 @@ export default async function TeamPage({ searchParams }: { searchParams: { ok?: 
               ),
             },
             {
-              key: 'general',
-              label: t(locale, 'team.general'),
+              key: 'modules',
+              label: 'Modules',
               content: (
-                <div className="text-sm text-gray-500 border border-dashed border-gray-300 rounded-xl px-4 py-8 text-center">
-                  {t(locale, 'team.generalPlaceholder')}
+                <div>
+                  <p className="text-sm text-gray-600 mb-4">Optional areas your firm can turn on. Off by default.</p>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3.5 py-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-gray-800">Property Management</div>
+                      <div className="text-[11px] text-gray-400">Rentals, tenants, rent tracking, applications, and P&amp;L.</div>
+                    </div>
+                    {viewer.orgId ? (
+                      <form action={setFirmPropertyModule.bind(null, viewer.orgId)} className="flex items-center gap-2.5 shrink-0">
+                        <input type="hidden" name="back" value="/admin/team" />
+                        <input type="hidden" name="enabled" value={propertyModuleOn ? '' : 'on'} />
+                        <span className={`text-[11px] font-medium ${propertyModuleOn ? 'text-green-600' : 'text-gray-400'}`}>
+                          {propertyModuleOn ? 'On' : 'Off'}
+                        </span>
+                        <button
+                          className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                            propertyModuleOn
+                              ? 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                              : 'bg-gray-900 text-white hover:bg-gray-700'
+                          }`}
+                        >
+                          {propertyModuleOn ? 'Disable' : 'Enable'}
+                        </button>
+                      </form>
+                    ) : (
+                      <span className="text-[11px] text-gray-400">No firm on your profile.</span>
+                    )}
+                  </div>
                 </div>
               ),
             },

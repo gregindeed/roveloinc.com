@@ -1,0 +1,141 @@
+<title>Property Tabs + Gallery</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #fff; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #111827; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 28px 24px 60px; }
+  .back { font-size: 12px; color: #6b7280; text-decoration: none; }
+  h1 { font-size: 24px; font-weight: 700; margin: 14px 0 2px; }
+  .sub { font-size: 14px; color: #4b5563; margin: 0; }
+  .facts { font-size: 12px; color: #9ca3af; margin: 4px 0 0; }
+  .tabs { margin-top: 24px; border-bottom: 1px solid #e5e7eb; display: flex; gap: 24px; }
+  .tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 0 0 10px; margin-bottom: -1px; font-size: 14px; font-weight: 500; color: #6b7280; cursor: pointer; }
+  .tab .n { font-size: 12px; color: #9ca3af; margin-left: 6px; }
+  .tab.on { color: #111827; border-bottom-color: #111827; }
+  .panel { padding-top: 20px; }
+  .panel[hidden] { display: none; }
+  /* mosaic */
+  .mosaic { position: relative; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); gap: 3px; height: 340px; border-radius: 16px; overflow: hidden; border: 1px solid #f3f4f6; }
+  .grid3 .hero { grid-column: 1 / 3; grid-row: 1 / 3; }
+  .tile { border: none; padding: 0; cursor: pointer; color: rgba(255,255,255,.9); font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+  .a { background: linear-gradient(135deg,#64748b,#334155); } .b { background: linear-gradient(135deg,#3b82f6,#1d4ed8); } .c { background: linear-gradient(135deg,#0ea5e9,#0369a1); }
+  .viewall { position: absolute; bottom: 12px; right: 12px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(31,41,55,.2); background: rgba(255,255,255,.95); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .dots { display: grid; grid-template-columns: repeat(2,1fr); gap: 2px; }
+  .dots i { width: 6px; height: 6px; border-radius: 1px; background: #111827; display: block; }
+  .strip { margin-top: 16px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 16px; display: flex; gap: 40px; font-size: 13px; }
+  .strip b { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: #9ca3af; font-weight: 600; }
+  /* gallery grid */
+  .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .gcell { height: 176px; border-radius: 12px; border: 1px solid #f3f4f6; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,.9); font-weight: 600; font-size: 13px; cursor: pointer; }
+  .muted { color: #6b7280; font-size: 14px; }
+  .cap { font-size: 12px; color: #9ca3af; margin: 0 0 4px; }
+  .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+  .card.danger { border-color: #fecaca; background: rgba(254,242,242,.4); }
+  .cardhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .cardhead b { font-size: 13px; color: #1f2937; }
+  .cardhead span { font-size: 11px; color: #9ca3af; }
+  .archivebtn { border: 1px solid #fca5a5; background: #fff; color: #b91c1c; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .gwrap { position: relative; }
+  .badge { position: absolute; left: 8px; top: 8px; background: rgba(17,24,39,.82); color: #fff; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 6px; }
+  .gtools { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 4px; opacity: 0; transition: opacity .15s; }
+  .gwrap:hover .gtools { opacity: 1; }
+  .tbtn { background: rgba(255,255,255,.95); color: #1f2937; font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .tbtn.dim { opacity: .4; }
+</style>
+<div class="wrap">
+  <a class="back" href="#">← Properties</a>
+  <h1>Garage Unit Fort Smith</h1>
+  <p class="sub">1515 S 21st St, Fort Smith, AR</p>
+  <p class="facts">Built 1948 · APN 12345</p>
+
+  <div class="tabs">
+    <button class="tab on" data-t="overview">Overview</button>
+    <button class="tab" data-t="gallery">Gallery <span class="n">4</span></button>
+    <button class="tab" data-t="documents">Documents <span class="n">3</span></button>
+    <button class="tab" data-t="applications">Applications <span class="n">0</span></button>
+    <button class="tab" data-t="settings">Settings</button>
+  </div>
+
+  <div class="panel" data-p="overview">
+    <div class="mosaic">
+      <div class="grid3">
+        <button class="tile hero a" data-idx="0">Hero</button>
+        <button class="tile b" data-idx="1">2</button>
+        <button class="tile c" data-idx="2">3</button>
+      </div>
+    </div>
+    <div class="strip">
+      <div><b>Units</b>1/1 occ.</div><div><b>Rent roll</b>$550/mo</div><div><b>Collected</b>$0 / $0</div><div><b>Outstanding</b>$0</div>
+    </div>
+    <p class="cap" style="margin-top:16px">…then valuation, edit property, payment settings, and Units &amp; tenants follow here.</p>
+  </div>
+
+  <div class="panel" data-p="gallery" hidden>
+    <p class="cap">Click a photo to open the lightbox (‹ / › or arrow keys). Hover a photo to <b>Set as cover</b> or nudge order ◀ ▶ — the Overview hero is always the cover.</p>
+    <div class="gallery">
+      <div class="gwrap"><div class="gcell a" data-idx="0">1</div><span class="badge">Cover</span><div class="gtools"><span class="tbtn dim">Set as cover</span><span class="tbtn">◀</span><span class="tbtn">▶</span></div></div>
+      <div class="gwrap"><div class="gcell b" data-idx="1">2</div><div class="gtools"><span class="tbtn">Set as cover</span><span class="tbtn">◀</span><span class="tbtn">▶</span></div></div>
+      <div class="gwrap"><div class="gcell c" data-idx="2">3</div><div class="gtools"><span class="tbtn">Set as cover</span><span class="tbtn">◀</span><span class="tbtn">▶</span></div></div>
+      <div class="gwrap"><div class="gcell a" data-idx="3">4</div><div class="gtools"><span class="tbtn">Set as cover</span><span class="tbtn">◀</span><span class="tbtn dim">▶</span></div></div>
+    </div>
+  </div>
+
+  <div class="panel" data-p="documents" hidden><p class="muted">Documents shelf (chips + search + receipts/invoices) lives here.</p></div>
+  <div class="panel" data-p="applications" hidden><p class="muted">Rental applications live here.</p></div>
+
+  <div class="panel" data-p="settings" hidden>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div class="cardhead"><b>Property details</b><span>name · address · facts · valuation</span></div>
+        <p class="muted" style="margin:10px 0 0">Name, address (with map lookup), type, year built, lot size, APN, single/multi-unit toggle, estimated value, purchase price &amp; date, notes → Save.</p>
+      </div>
+      <div class="card">
+        <div class="cardhead"><b>How tenants pay &amp; reminders</b><span>Zelle · Check · reminders on</span></div>
+        <p class="muted" style="margin:10px 0 0">Zelle, bank/ACH, check, other payment methods + automated reminders and lead days → Save.</p>
+      </div>
+      <div class="card danger">
+        <b style="color:#b91c1c">Danger zone</b>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px">
+          <p class="muted" style="margin:0">Archiving hides this property; rent history &amp; documents are kept.</p>
+          <span class="archivebtn">Archive this property</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+  <!-- Lightbox -->
+  <div id="lb" hidden style="position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;background:rgba(0,0,0,.9)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;color:#fff">
+      <span id="lbcount" style="font-size:14px;color:rgba(255,255,255,.7)"></span>
+      <button id="lbclose" style="background:none;border:none;color:rgba(255,255,255,.9);font-size:14px;cursor:pointer">✕ Close</button>
+    </div>
+    <div style="position:relative;flex:1;display:flex;align-items:center;justify-content:center;padding:0 16px 24px">
+      <button id="lbprev" style="position:absolute;left:12px;width:44px;height:44px;border:none;border-radius:9999px;background:rgba(255,255,255,.1);color:#fff;font-size:30px;cursor:pointer">‹</button>
+      <div id="lbimg" style="width:min(70vw,640px);height:min(70vh,460px);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px"></div>
+      <button id="lbnext" style="position:absolute;right:12px;width:44px;height:44px;border:none;border-radius:9999px;background:rgba(255,255,255,.1);color:#fff;font-size:30px;cursor:pointer">›</button>
+    </div>
+  </div>
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panels = document.querySelectorAll('.panel');
+  function show(key) {
+    tabs.forEach(t => t.classList.toggle('on', t.dataset.t === key));
+    panels.forEach(p => { p.hidden = p.dataset.p !== key; });
+  }
+  tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.t)));
+
+  // Lightbox demo (4 placeholder photos)
+  const grads = ['linear-gradient(135deg,#64748b,#334155)','linear-gradient(135deg,#3b82f6,#1d4ed8)','linear-gradient(135deg,#0ea5e9,#0369a1)','linear-gradient(135deg,#64748b,#334155)'];
+  const lb = document.getElementById('lb'), lbimg = document.getElementById('lbimg'), lbcount = document.getElementById('lbcount');
+  let idx = null;
+  function render() { lbimg.style.background = grads[idx]; lbimg.textContent = 'Photo ' + (idx+1); lbcount.textContent = (idx+1) + ' / ' + grads.length; }
+  function open(i) { idx = i; lb.hidden = false; render(); }
+  function close() { lb.hidden = true; idx = null; }
+  function move(d) { if (idx===null) return; idx = (idx + d + grads.length) % grads.length; render(); }
+  document.querySelectorAll('[data-idx]').forEach(el => el.addEventListener('click', () => open(+el.dataset.idx)));
+  document.getElementById('lbclose').addEventListener('click', close);
+  document.getElementById('lbprev').addEventListener('click', (e) => { e.stopPropagation(); move(-1); });
+  document.getElementById('lbnext').addEventListener('click', (e) => { e.stopPropagation(); move(1); });
+  lb.addEventListener('click', (e) => { if (e.target === lb) close(); });
+  window.addEventListener('keydown', (e) => { if (lb.hidden) return; if (e.key==='Escape') close(); else if (e.key==='ArrowLeft') move(-1); else if (e.key==='ArrowRight') move(1); });
+</script>

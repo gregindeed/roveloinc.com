@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AuthHeader from '@/components/AuthHeader'
 import { requirePlatform } from '@/lib/auth'
-import { inviteFirmManager, resetManagerAccess } from '../actions'
+import { inviteFirmManager, resetManagerAccess, setFirmPropertyModule } from '../actions'
 import Avatar from '@/components/Avatar'
 import { isOnline } from '@/lib/presence'
 import { getLocale } from '@/lib/i18n-server'
@@ -143,6 +143,34 @@ export default async function FirmProperties({
             />
             <button className="text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors">{t(locale, 'team.sendInvite')}</button>
           </form>
+        </div>
+
+        {/* Modules — access to optional areas, off by default */}
+        <div className="mt-6 rounded-xl border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-900">Modules</h2>
+          <p className="mt-0.5 mb-3 text-xs text-gray-500">Optional areas this firm can use. Off by default.</p>
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-[13px] font-medium text-gray-800">Property Management</div>
+              <div className="text-[11px] text-gray-400">Rentals, tenants, rent tracking, applications, and P&amp;L.</div>
+            </div>
+            <form action={setFirmPropertyModule.bind(null, firm.id)} className="flex items-center gap-2.5 shrink-0">
+              <input type="hidden" name="back" value={`/admin/firms/${firm.id}`} />
+              <input type="hidden" name="enabled" value={firm.property_module ? '' : 'on'} />
+              <span className={`text-[11px] font-medium ${firm.property_module ? 'text-green-600' : 'text-gray-400'}`}>
+                {firm.property_module ? 'On' : 'Off'}
+              </span>
+              <button
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  firm.property_module
+                    ? 'border border-gray-200 text-gray-600 hover:bg-white'
+                    : 'bg-gray-900 text-white hover:bg-gray-700'
+                }`}
+              >
+                {firm.property_module ? 'Disable' : 'Enable'}
+              </button>
+            </form>
+          </div>
         </div>
 
         {/* Accounts under this firm */}

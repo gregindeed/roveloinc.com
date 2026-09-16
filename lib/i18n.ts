@@ -154,7 +154,8 @@ const en: Dict = {
   // Admin home
   'admin.newFirm': 'New firm',
   'admin.newAccount': 'New account',
-  'admin.adminNav': 'Admin',
+  'admin.addLead': 'Add lead',
+  'admin.adminNav': 'Dashboard',
   'admin.noAccounts': 'No accounts yet.',
   'admin.onboardFirstFirm': 'Onboard your first firm',
   'admin.onboardFirstAccount': 'Onboard your first account',
@@ -374,7 +375,8 @@ const es: Dict = {
   // Admin home
   'admin.newFirm': 'Nueva firma',
   'admin.newAccount': 'Nueva cuenta',
-  'admin.adminNav': 'Administración',
+  'admin.addLead': 'Prospecto',
+  'admin.adminNav': 'Panel',
   'admin.noAccounts': 'Aún no hay cuentas.',
   'admin.onboardFirstFirm': 'Incorpore su primera firma',
   'admin.onboardFirstAccount': 'Incorpore su primera cuenta',

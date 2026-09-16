@@ -1,8 +1,10 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import AuthHeader from '@/components/AuthHeader'
 import PropertyImage from '@/components/PropertyImage'
 import { getViewer } from '@/lib/auth'
+import { canUsePropertyModule } from '@/lib/propertyAccess'
 import { getPortfolio } from '@/lib/propertyServer'
 import { PROPERTY_TYPE_LABELS, usd, monthLabel, firstOfMonth, type PropertyType } from '@/lib/property'
 
@@ -28,6 +30,7 @@ export default async function PropertiesHome({ searchParams }: { searchParams: {
     data: { user },
   } = await supabase.auth.getUser()
   const viewer = await getViewer()
+  if (!(await canUsePropertyModule(viewer))) redirect('/admin')
   const canManage = viewer?.role === 'admin' || viewer?.role === 'collaborator'
 
   const month = firstOfMonth()
@@ -49,7 +52,7 @@ export default async function PropertiesHome({ searchParams }: { searchParams: {
   return (
     <div className="min-h-screen bg-white">
       <AuthHeader
-        label="Properties"
+        label="Property Management"
         email={user?.email}
         settingsHref={null}
         actions={
@@ -90,31 +93,40 @@ export default async function PropertiesHome({ searchParams }: { searchParams: {
           </div>
         ) : (
           <>
-            {/* Portfolio summary */}
-            <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Stat label="Properties" value={String(rows.length)} />
-              <Stat label="Units" value={`${total.occupied}/${total.units} occupied`} />
-              <Stat label="Collected this month" value={usd(total.collected)} sub={`of ${usd(total.due)} due`} />
-              <Stat label="Outstanding" value={usd(total.outstanding)} tone={total.outstanding > 0 ? 'warn' : 'ok'} />
+            {/* Portfolio summary — one compact strip */}
+            <div className="mt-5 flex flex-wrap gap-x-8 gap-y-3 rounded-xl border border-gray-200 px-4 py-3">
+              <StatCell label="Properties" value={String(rows.length)} />
+              <StatCell label="Units" value={`${total.occupied}/${total.units} occ.`} />
+              <StatCell label="Collected" value={usd(total.collected)} sub={`/ ${usd(total.due)}`} />
+              <StatCell label="Outstanding" value={usd(total.outstanding)} tone={total.outstanding > 0 ? 'warn' : undefined} />
             </div>
 
-            {/* Property cards */}
-            <div className="mt-6 space-y-3">
-              {rows.map(({ property, stats }) => (
+            {/* Property rows */}
+            <div className="mt-5 space-y-2">
+              {rows.map(({ property, stats, coverUrl }) => (
                 <Link
                   key={property.id}
                   href={`/admin/properties/${property.id}`}
-                  className="block rounded-xl border border-gray-200 p-4 hover:border-gray-900 hover:bg-gray-50 transition-colors"
+                  className="flex items-center gap-3.5 rounded-xl border border-gray-200 p-2.5 hover:border-gray-900 hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex items-start gap-4">
+                  {coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={coverUrl}
+                      alt={property.name}
+                      className="w-20 h-14 rounded-lg object-cover shrink-0 border border-gray-100 bg-gray-50"
+                    />
+                  ) : (
                     <PropertyImage
                       lat={property.lat}
                       lng={property.lng}
+                      address={property.address}
                       name={property.name}
-                      size="240x160"
-                      className="hidden sm:block w-28 h-20 rounded-lg object-cover shrink-0 border border-gray-100"
+                      size="200x140"
+                      className="w-20 h-14 rounded-lg object-cover shrink-0 border border-gray-100 bg-gray-50"
                     />
-                    <div className="flex items-start justify-between gap-4 flex-1 min-w-0">
+                  )}
+                  <div className="flex items-center justify-between gap-4 flex-1 min-w-0">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-gray-900 truncate">{property.name}</p>
@@ -123,8 +135,8 @@ export default async function PropertiesHome({ searchParams }: { searchParams: {
                         </span>
                       </div>
                       {property.address && <p className="text-xs text-gray-500 mt-0.5 truncate">{property.address}</p>}
-                      <p className="text-xs text-gray-500 mt-1.5">
-                        {stats.occupied}/{stats.units} occupied · {usd(stats.monthlyRent)}/mo
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {stats.occupied}/{stats.units} occ. · {usd(stats.monthlyRent)}/mo
                       </p>
                     </div>
                     <div className="text-right shrink-0">
@@ -132,11 +144,11 @@ export default async function PropertiesHome({ searchParams }: { searchParams: {
                         {usd(stats.collectedThisMonth)}
                         <span className="text-gray-400 font-normal"> / {usd(stats.dueThisMonth)}</span>
                       </p>
-                      <p className="text-[11px] text-gray-400 mt-0.5">collected this month</p>
-                      {stats.outstanding > 0 && (
-                        <p className="text-[11px] text-amber-600 mt-1">{usd(stats.outstanding)} outstanding</p>
+                      {stats.outstanding > 0 ? (
+                        <p className="text-[11px] text-amber-600 mt-0.5">{usd(stats.outstanding)} outstanding</p>
+                      ) : (
+                        <p className="text-[11px] text-gray-400 mt-0.5">collected</p>
                       )}
-                    </div>
                     </div>
                   </div>
                 </Link>
@@ -149,12 +161,14 @@ export default async function PropertiesHome({ searchParams }: { searchParams: {
   )
 }
 
-function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'ok' | 'warn' }) {
+function StatCell({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'warn' }) {
   return (
-    <div className="rounded-xl border border-gray-200 p-4">
+    <div>
       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-      <p className={`text-lg font-semibold tabular-nums mt-1 ${tone === 'warn' ? 'text-amber-600' : 'text-gray-900'}`}>{value}</p>
-      {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+      <p className={`text-sm font-semibold tabular-nums mt-0.5 ${tone === 'warn' ? 'text-amber-600' : 'text-gray-900'}`}>
+        {value}
+        {sub && <span className="text-gray-400 font-normal"> {sub}</span>}
+      </p>
     </div>
   )
 }

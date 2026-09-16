@@ -96,6 +96,46 @@ export function rentInvoiceEmailHtml(
   `)
 }
 
+// Invite a prospective tenant to fill out a rental application (Phase 3).
+export function applicationInviteEmailHtml(i: {
+  landlordName: string
+  propertyName: string
+  unitLabel: string
+  url: string
+}): string {
+  const where = `${i.propertyName}${i.unitLabel ? ` · ${i.unitLabel}` : ''}`
+  return shell(`
+    <h1 style="font-size:18px;margin:0 0 12px;">You're invited to apply</h1>
+    <p style="font-size:14px;line-height:1.6;color:#374151;margin:0 0 8px;">
+      ${i.landlordName} has invited you to apply to rent <strong>${where}</strong>. The application takes a few minutes — you'll enter your contact details, income, and background-check consent.
+    </p>
+    <a href="${i.url}" style="display:inline-block;margin-top:8px;background:#111827;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 18px;border-radius:8px;">Start your application</a>
+    <p style="font-size:12px;line-height:1.6;color:#6b7280;margin:20px 0 0;">
+      This is a private link just for you — please don't forward it. If you didn't expect this, you can ignore this email.
+    </p>
+  `)
+}
+
+// A plain message from the property manager to the tenant (Phase 4).
+export function tenantMessageEmailHtml(i: {
+  tenantName: string
+  landlordName: string
+  propertyName: string
+  unitLabel: string
+  subject: string
+  body: string
+}): string {
+  const where = `${i.propertyName}${i.unitLabel ? ` · ${i.unitLabel}` : ''}`
+  return shell(`
+    <p style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af;margin:0 0 10px;">${where}</p>
+    <h1 style="font-size:18px;margin:0 0 14px;">${i.subject}</h1>
+    <div style="font-size:14px;line-height:1.7;color:#374151;white-space:pre-line;">${i.body}</div>
+    <p style="font-size:12px;line-height:1.6;color:#6b7280;margin:22px 0 0;">
+      — ${i.landlordName}, via Rovelo Inc. Please reply to this email or contact your property manager with any questions.
+    </p>
+  `)
+}
+
 export function rentReceiptEmailHtml(
   i: RentEmailInfo & {
     receiptNumber: string
@@ -126,6 +166,59 @@ export function rentReceiptEmailHtml(
     ${settled ? '' : payBlock(i.instructions ?? [])}
     <p style="font-size:12px;line-height:1.6;color:#6b7280;margin:18px 0 0;">
       Receipt ${i.receiptNumber} · issued by ${i.landlordName} via Rovelo Inc. Keep it for your records.
+    </p>
+  `)
+}
+
+// Sent to the applicant right after they submit — a receipt/confirmation.
+export function applicationReceivedEmailHtml(i: {
+  applicantName: string
+  landlordName: string
+  propertyName: string
+  unitLabel: string
+}): string {
+  const where = `${i.propertyName}${i.unitLabel ? ` · ${i.unitLabel}` : ''}`
+  return shell(`
+    <h1 style="font-size:18px;margin:0 0 12px;">Application received</h1>
+    <p style="font-size:14px;line-height:1.6;color:#374151;margin:0 0 12px;">
+      Thanks${i.applicantName ? `, ${i.applicantName}` : ''} — we've received your rental application for <strong>${where}</strong>.
+    </p>
+    <p style="font-size:14px;line-height:1.6;color:#374151;margin:0 0 18px;">
+      ${i.landlordName} will review it and be in touch about next steps. No action is needed from you right now. You can keep this email for your records.
+    </p>
+    <p style="font-size:12px;line-height:1.6;color:#6b7280;margin:0;">
+      Submitted through Rovelo Inc on behalf of ${i.landlordName}. If you didn't apply, you can ignore this email.
+    </p>
+  `)
+}
+
+// Sent to the property manager when a prospect submits — a heads-up + link.
+export function applicationSubmittedEmailHtml(i: {
+  applicantName: string
+  propertyName: string
+  unitLabel: string
+  email: string | null
+  phone: string | null
+  monthlyIncome: string | null
+  url: string
+}): string {
+  const where = `${i.propertyName}${i.unitLabel ? ` · ${i.unitLabel}` : ''}`
+  const rows = [
+    lineRow('Applicant', i.applicantName || '—'),
+    lineRow('Property', where),
+    i.email ? lineRow('Email', i.email) : '',
+    i.phone ? lineRow('Phone', i.phone) : '',
+    i.monthlyIncome ? lineRow('Monthly income', i.monthlyIncome) : '',
+  ].join('')
+  return shell(`
+    <h1 style="font-size:18px;margin:0 0 12px;">New rental application</h1>
+    <p style="font-size:14px;line-height:1.6;color:#374151;margin:0 0 18px;">
+      A prospect just submitted an application for <strong>${where}</strong>. Review their full details and approve or decline in the portal.
+    </p>
+    <table style="width:100%;border-collapse:collapse;">${rows}</table>
+    <a href="${i.url}" style="display:inline-block;margin-top:18px;background:#111827;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:11px 18px;border-radius:8px;">Review application</a>
+    <p style="font-size:12px;line-height:1.6;color:#6b7280;margin:20px 0 0;">
+      Sent by Rovelo Inc. Full application detail — including any background answers — is available in the portal, not this email.
     </p>
   `)
 }

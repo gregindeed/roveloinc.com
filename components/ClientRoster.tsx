@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import AvatarStack from './AvatarStack'
 import { useT } from '@/components/I18nProvider'
@@ -27,44 +26,11 @@ export type RosterRow = {
 }
 
 // Surface = neutral identity only. No scores, no severity colors — an entity's
-// name is never "stamped" as deficient. Everything evaluative lives in the
-// expand, which you open by choice.
+// name is never "stamped" as deficient. The whole row links to the account.
 const COLS = 'grid grid-cols-[1fr_auto] md:grid-cols-[2fr_1fr_1fr_auto] gap-3 items-center'
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className={`h-3.5 w-3.5 text-gray-300 transition-transform ${open ? 'rotate-90' : ''}`}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M9 18l6-6-6-6" />
-    </svg>
-  )
-}
-
-function ReadinessLine({ score }: { score: number | undefined }) {
-  const t = useT()
-  if (score == null) return null
-  return (
-    <div className="flex items-center gap-2 mb-2">
-      <span className="text-[11px] text-gray-400 w-16">{t('admin.readiness')}</span>
-      <div className="h-[3px] w-28 rounded-full bg-gray-100 overflow-hidden">
-        <div className={`h-full rounded-full ${score < 50 ? 'bg-red-300' : 'bg-gray-400'}`} style={{ width: `${Math.max(3, score)}%` }} />
-      </div>
-      <span className="text-[11px] tabular-nums text-gray-400">{score}%</span>
-    </div>
-  )
-}
 
 export default function ClientRoster({ rows, mode = 'mixed' }: { rows: RosterRow[]; mode?: 'mixed' | 'individual' }) {
   const t = useT()
-  const [open, setOpen] = useState<Record<string, boolean>>({})
-  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }))
 
   // For an individuals-only view the two right columns describe a person, not a
   // company — so relabel the headers. The cell values are prepared upstream.
@@ -81,7 +47,6 @@ export default function ClientRoster({ rows, mode = 'mixed' }: { rows: RosterRow
       </div>
 
       {rows.map((c) => {
-        const isOpen = !!open[c.id]
         const dissolved = c.status && c.status !== 'active'
         return (
           <div key={c.id} className="border-b border-gray-100 last:border-0">
@@ -102,46 +67,8 @@ export default function ClientRoster({ rows, mode = 'mixed' }: { rows: RosterRow
               </div>
               <div className="justify-self-end flex items-center gap-2.5">
                 {c.presence && c.presence.length > 0 && <AvatarStack users={c.presence} size={20} max={3} />}
-                <button
-                  type="button"
-                  aria-label={isOpen ? t('admin.hideDetails') : t('admin.showDetails')}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    toggle(c.id)
-                  }}
-                  className="p-1 -m-1 rounded hover:bg-gray-100"
-                >
-                  <Chevron open={isOpen} />
-                </button>
               </div>
             </Link>
-
-            {isOpen && (
-              <div className="px-4 pb-3.5 pt-0.5 md:pl-4">
-                <ReadinessLine score={c.readiness} />
-                {c.attention ? (
-                  <ul className="space-y-1 mb-2.5">
-                    {c.attention.reasons.map((r, i) => (
-                      <li key={i} className="flex items-center gap-2 text-xs text-gray-600">
-                        <span className="h-1 w-1 shrink-0 rounded-full bg-gray-300" />
-                        {r}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-gray-400 mb-2.5">{t('admin.nothingOutstanding')}</p>
-                )}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
-                  <Link href={`/admin/clients/${c.slug}`} className="font-medium text-gray-900 hover:underline">
-                    {t('admin.openBooks')} →
-                  </Link>
-                  <Link href={`/admin/clients/${c.slug}/account`} className="text-gray-400 hover:text-gray-900">
-                    {t('admin.settings')}
-                  </Link>
-                </div>
-              </div>
-            )}
           </div>
         )
       })}

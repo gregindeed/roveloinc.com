@@ -1,0 +1,60 @@
+<title>Payment Health Donut</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; background: #fff; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; color: #111827; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 40px 20px; }
+  .lease { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+  .meta { font-size: 12px; color: #6b7280; margin: 0 0 4px; }
+  .health { margin-top: 12px; border: 1px solid #e5e7eb; background: rgba(249,250,251,.6); border-radius: 12px; padding: 12px; }
+  .row { display: flex; align-items: center; gap: 16px; }
+  .donut { position: relative; width: 72px; height: 72px; flex-shrink: 0; }
+  .donut svg { transform: rotate(-90deg); }
+  .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .pct { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pctlabel { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; color: #9ca3af; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 16px; flex: 1; }
+  @media (max-width: 480px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+  .tlabel { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #9ca3af; margin: 0; }
+  .tval { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; margin: 2px 0 0; }
+  .ok { color: #16a34a; } .warn { color: #d97706; }
+  .cap { font-size: 12px; color: #6b7280; margin: 24px 0 8px; }
+  table { width: 100%; font-size: 13px; border-collapse: collapse; margin-top: 8px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #9ca3af; font-weight: 500; padding: 6px 12px 6px 0; }
+  td { padding: 8px 12px 8px 0; border-top: 1px solid #f3f4f6; font-variant-numeric: tabular-nums; }
+  .chip { display: inline-block; font-size: 10px; font-weight: 600; border-radius: 9999px; padding: 2px 8px; }
+  .chip.paid { color: #16a34a; border: 1px solid #bbf7d0; background: #f0fdf4; }
+  .chip.due { color: #6b7280; border: 1px solid #e5e7eb; background: #f9fafb; }
+</style>
+<div class="wrap">
+  <p class="cap">How it looks inside a lease block (sample: 4 of 6 months paid — the Rio Rancho "67%" case, in roveloinc styling)</p>
+  <div class="lease">
+    <p class="meta">carlos.ramirez@email.com · +52 664 555 1234 · since Oct 1, 2025</p>
+
+    <div class="health">
+      <div class="row">
+        <div class="donut">
+          <svg width="72" height="72" viewBox="0 0 72 72">
+            <circle cx="36" cy="36" r="26" fill="none" stroke="#e5e7eb" stroke-width="7"></circle>
+            <circle cx="36" cy="36" r="26" fill="none" stroke="#111827" stroke-width="7"
+              stroke-linecap="round" stroke-dasharray="109.4 53.9"></circle>
+          </svg>
+          <div class="center"><span class="pct">67%</span><span class="pctlabel">paid</span></div>
+        </div>
+        <div class="tiles">
+          <div><p class="tlabel">Billed</p><p class="tval">$2,100.00</p></div>
+          <div><p class="tlabel">Paid</p><p class="tval ok">$1,400.00</p></div>
+          <div><p class="tlabel">Pending</p><p class="tval warn">$700.00</p></div>
+          <div><p class="tlabel">Payments</p><p class="tval">4</p></div>
+        </div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>Month</th><th>Due</th><th>Paid</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>Jan 2026<br><span style="font-size:10px;color:#9ca3af">RCPT-24801</span></td><td>$350.00</td><td>$350.00</td><td><span class="chip paid">Paid</span></td></tr>
+        <tr><td>Feb 2026</td><td>$350.00</td><td>$0.00</td><td><span class="chip due">Due</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>

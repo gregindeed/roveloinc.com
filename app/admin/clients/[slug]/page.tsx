@@ -19,6 +19,9 @@ export default async function EntityYearPicker({ params }: { params: { slug: str
   const { data: clientRow } = await supabase.from('clients').select('*').eq('slug', params.slug).single()
   if (!clientRow) notFound()
   const c = clientRow as Client
+  // For individuals the "owner" is the person themselves, so owner_name just
+  // repeats the entity name — drop it from the subtitle when they match.
+  const ownerLine = c.owner_name && c.owner_name !== c.name ? c.owner_name : null
   const locale = getLocale()
   const viewer = await getViewer()
   const canManage = viewer?.role === 'admin'
@@ -50,10 +53,10 @@ export default async function EntityYearPicker({ params }: { params: { slug: str
       <h1 className="text-2xl font-bold text-gray-900 mt-4" style={{ fontFamily: 'var(--font-fraunces), serif' }}>
         {c.name}
       </h1>
-      {(c.owner_name || c.address) && (
+      {(ownerLine || c.address) && (
         <p className="text-sm text-gray-600 mt-1">
-          {c.owner_name ?? ''}
-          {c.owner_name && c.address ? ' · ' : ''}
+          {ownerLine ?? ''}
+          {ownerLine && c.address ? ' · ' : ''}
           {c.address ?? ''}
         </p>
       )}

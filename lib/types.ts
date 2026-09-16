@@ -93,6 +93,7 @@ export type Organization = {
   slug: string | null
   is_platform: boolean
   notes: string | null
+  property_module?: boolean
   created_at: string
 }
 
