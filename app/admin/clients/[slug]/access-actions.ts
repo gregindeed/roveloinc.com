@@ -278,3 +278,33 @@ export async function revokeEntityAccess(slug: string, userId: string) {
   revalidatePath(`/admin/clients/${slug}/account`)
   back(slug, 'ok', 'Access removed.')
 }
+
+// ── Firm-level collaboration ─────────────────────────────────────────────────
+// Assign a WHOLE firm to collaborate on this entity. Every manager of that firm
+// gains access, and the account shows on the firm's roster (marked). Distinct
+// from the per-person grants above.
+export async function assignFirmToEntity(slug: string, formData: FormData) {
+  const viewer = await requireOwner()
+  const orgId = String(formData.get('org_id') || '').trim()
+  if (!orgId) back(slug, 'warn', 'Pick a firm to assign.')
+  const admin = createAdminClient()
+  const { data: client } = await admin.from('clients').select('id, org_id').eq('slug', slug).single()
+  if (!client) back(slug, 'warn', 'Entity not found.')
+  if ((client as { org_id: string | null }).org_id === orgId) back(slug, 'warn', 'That firm already owns this entity.')
+  const { error } = await admin
+    .from('firm_collaborators')
+    .insert({ client_id: (client as { id: string }).id, org_id: orgId, created_by: viewer.userId })
+  if (error && (error as { code?: string }).code !== '23505') back(slug, 'warn', `Could not assign the firm: ${error.message}`)
+  revalidatePath(`/admin/clients/${slug}/account`)
+  back(slug, 'ok', 'Firm assigned to collaborate.')
+}
+
+export async function removeFirmFromEntity(slug: string, fcId: string) {
+  await requireOwner()
+  const admin = createAdminClient()
+  const { data: client } = await admin.from('clients').select('id').eq('slug', slug).single()
+  if (!client) back(slug, 'warn', 'Entity not found.')
+  await admin.from('firm_collaborators').delete().eq('id', fcId).eq('client_id', (client as { id: string }).id)
+  revalidatePath(`/admin/clients/${slug}/account`)
+  back(slug, 'ok', 'Firm collaboration removed.')
+}

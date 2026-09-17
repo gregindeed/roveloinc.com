@@ -8,10 +8,14 @@ import {
   grantExistingCollaborator,
   resendCollaboratorInvite,
   searchAddableUsers,
+  assignFirmToEntity,
+  removeFirmFromEntity,
 } from '@/app/admin/clients/[slug]/access-actions'
 
 type Collaborator = { id: string; email: string; name: string; handle: string | null; avatar: string | null; firm: string }
 type Suggestion = { id: string; name: string; handle: string | null; avatar: string | null; email: string; firm: string }
+type FirmCollab = { id: string; orgId: string; name: string; handle: string; avatar: string | null }
+type FirmOption = { id: string; name: string; handle: string; avatar: string | null }
 
 const looksLikeEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())
 const meta = (handle: string | null, firm: string, email?: string) =>
@@ -21,10 +25,14 @@ export default function EntityAccessPanel({
   slug,
   entityName,
   collaborators,
+  firmCollaborators = [],
+  assignableFirms = [],
 }: {
   slug: string
   entityName: string
   collaborators: Collaborator[]
+  firmCollaborators?: FirmCollab[]
+  assignableFirms?: FirmOption[]
 }) {
   const [q, setQ] = useState('')
   const [results, setResults] = useState<Suggestion[]>([])
@@ -203,6 +211,56 @@ export default function EntityAccessPanel({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Collaborating firms — assign a whole firm at once */}
+      <h2 className="mt-8 mb-1 text-sm font-semibold text-gray-900">Collaborating firms</h2>
+      <p className="mb-3 text-xs text-gray-500">
+        Assign a whole firm to <span className="font-medium">{entityName}</span>. Every manager of that firm gains access,
+        and the account shows on their roster.
+      </p>
+      <div className="space-y-3 rounded-xl border border-gray-200 p-4">
+        {firmCollaborators.length > 0 ? (
+          <ul className="divide-y divide-gray-100">
+            {firmCollaborators.map((f) => (
+              <li key={f.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar name={f.name} url={f.avatar} size={36} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-gray-900">{f.name}</div>
+                    <div className="truncate text-[11px] text-gray-500">@{f.handle}</div>
+                  </div>
+                </div>
+                <form action={removeFirmFromEntity.bind(null, slug, f.id)}>
+                  <button type="submit" className="shrink-0 text-[11px] font-medium text-gray-400 transition-colors hover:text-red-600">
+                    Remove
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-gray-400">No firms assigned to this entity yet.</p>
+        )}
+
+        {assignableFirms.length > 0 ? (
+          <form action={assignFirmToEntity.bind(null, slug)} className="flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3">
+            <select
+              name="org_id"
+              required
+              defaultValue=""
+              className="min-w-[200px] flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+            >
+              <option value="" disabled>Choose a firm…</option>
+              {assignableFirms.map((f) => (
+                <option key={f.id} value={f.id}>{f.name} · @{f.handle}</option>
+              ))}
+            </select>
+            <button type="submit" className="text-sm font-medium text-gray-900 transition-colors hover:text-gray-500">Assign firm</button>
+          </form>
+        ) : (
+          <p className="border-t border-gray-100 pt-3 text-[11px] text-gray-400">No other firms available to assign.</p>
+        )}
       </div>
     </div>
   )

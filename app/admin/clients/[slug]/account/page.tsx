@@ -65,6 +65,8 @@ export default async function AccountPage({
   // Owner-only: who (external collaborators) can work on this entity.
   // Managers (admin role): the portal login state for this entity.
   let collaborators: { id: string; email: string; name: string; handle: string | null; avatar: string | null; firm: string }[] = []
+  let firmCollaborators: { id: string; orgId: string; name: string; handle: string; avatar: string | null }[] = []
+  let assignableFirms: { id: string; name: string; handle: string; avatar: string | null }[] = []
   let portalEmail: string | null = null
   let firms: Organization[] = []
   const isManager = viewer?.role === 'admin'
@@ -111,6 +113,24 @@ export default async function AccountPage({
           }
         })
       }
+
+      // Firm-level collaborations on this entity, plus assignable firms (with a
+      // @handle + avatar so a firm can be tagged like a person).
+      const [{ data: allOrgs }, { data: fcRows }] = await Promise.all([
+        admin.from('organizations').select('id, name, slug, handle, avatar_url').order('name'),
+        admin.from('firm_collaborators').select('id, org_id').eq('client_id', c.id),
+      ])
+      const orgs = (allOrgs ?? []) as { id: string; name: string; slug: string | null; handle: string | null; avatar_url: string | null }[]
+      const orgById = new Map(orgs.map((o) => [o.id, o]))
+      const hdl = (o?: { handle: string | null; slug: string | null }) => o?.handle || (o?.slug || '').replace(/[^a-z0-9]/g, '')
+      firmCollaborators = (fcRows ?? []).map((r) => {
+        const o = orgById.get(r.org_id as string)
+        return { id: r.id as string, orgId: r.org_id as string, name: o?.name ?? '(firm)', handle: hdl(o), avatar: o?.avatar_url ?? null }
+      })
+      const assignedOrgIds = new Set(firmCollaborators.map((f) => f.orgId))
+      assignableFirms = orgs
+        .filter((o) => o.id !== c.org_id && !assignedOrgIds.has(o.id))
+        .map((o) => ({ id: o.id, name: o.name, handle: hdl(o), avatar: o.avatar_url }))
     }
 
     const { data: portalProfile } = await admin
@@ -375,7 +395,7 @@ export default async function AccountPage({
                 {
                   key: 'access',
                   label: 'Collaborators',
-                  content: <EntityAccessPanel slug={c.slug} entityName={c.name} collaborators={collaborators} />,
+                  content: <EntityAccessPanel slug={c.slug} entityName={c.name} collaborators={collaborators} firmCollaborators={firmCollaborators} assignableFirms={assignableFirms} />,
                 },
               ]
             : []),

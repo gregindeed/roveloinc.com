@@ -240,26 +240,6 @@ export default async function FirmProperties({
           </div>
         </div>
 
-        {/* Accounts under this firm */}
-        <div className="mt-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-2">{t(locale, 'team.accounts')}</h2>
-          {accounts.length === 0 ? (
-            <p className="text-xs text-gray-400">{t(locale, 'team.noAccounts')}</p>
-          ) : (
-            <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
-              {accounts.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/admin/clients/${c.slug}`}
-                  className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-gray-50"
-                >
-                  <span className="text-gray-900">{c.name}</span>
-                  <span className="text-gray-300">→</span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
       </main>
     </div>
   )

@@ -94,6 +94,8 @@ export type Organization = {
   is_platform: boolean
   notes: string | null
   property_module?: boolean
+  handle?: string | null
+  avatar_url?: string | null
   created_at: string
 }
 
