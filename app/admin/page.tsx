@@ -161,13 +161,30 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   const shownOrgIds = new Set(firmsWithRows.map((f) => f.id))
   const sharedRows = list.filter((c) => !c.org_id || !shownOrgIds.has(c.org_id))
 
-  // Firm-level collaboration: accounts a firm co-manages (owned by another firm)
-  // surface under that firm's roster too, marked "Collaborating".
-  const { data: firmCollabRows } = await createAdminClient().from('firm_collaborators').select('client_id, org_id')
-  const collabByFirm: Record<string, string[]> = {}
-  for (const r of (firmCollabRows ?? []) as { client_id: string; org_id: string }[]) {
-    ;(collabByFirm[r.org_id] ??= []).push(r.client_id)
+  // Collaboration surfacing: an account owned by one firm shows on ANOTHER firm's
+  // roster (marked "Collaborating") when either (a) the whole firm is assigned as
+  // a collaborator (firm_collaborators), or (b) a person who belongs to that firm
+  // holds an individual grant on it (entity_access → that person's firm). Access
+  // still differs — firm-level grants the whole firm, individual stays personal —
+  // this only controls what appears under each firm.
+  const collabAdmin = createAdminClient()
+  const [{ data: firmCollabRows }, { data: grantRows }, { data: profileRows }] = await Promise.all([
+    collabAdmin.from('firm_collaborators').select('client_id, org_id'),
+    collabAdmin.from('entity_access').select('user_id, client_id'),
+    collabAdmin.from('profiles').select('id, org_id'),
+  ])
+  const userOrg = new Map((profileRows ?? []).map((p) => [p.id as string, (p.org_id as string | null) ?? null]))
+  const ownerOrg = new Map(all.map((c) => [c.id, c.org_id ?? null]))
+  const collabSets: Record<string, Set<string>> = {}
+  const addCollab = (org: string | null, clientId: string) => {
+    if (!org) return
+    if (ownerOrg.get(clientId) === org) return // a firm doesn't "collaborate" on what it owns
+    ;(collabSets[org] ??= new Set()).add(clientId)
   }
+  for (const r of (firmCollabRows ?? []) as { client_id: string; org_id: string }[]) addCollab(r.org_id, r.client_id)
+  for (const g of (grantRows ?? []) as { user_id: string; client_id: string }[]) addCollab(userOrg.get(g.user_id) ?? null, g.client_id)
+  const collabByFirm: Record<string, string[]> = {}
+  for (const [org, set] of Object.entries(collabSets)) collabByFirm[org] = [...set]
 
   const firmLites: FirmLite[] = firmsWithRows.map((f) => ({ id: f.id, name: f.name, isPlatform: !!f.is_platform }))
 
