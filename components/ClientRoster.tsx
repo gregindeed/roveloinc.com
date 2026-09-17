@@ -29,7 +29,16 @@ export type RosterRow = {
 // name is never "stamped" as deficient. The whole row links to the account.
 const COLS = 'grid grid-cols-[1fr_auto] md:grid-cols-[2fr_1fr_1fr_auto] gap-3 items-center'
 
-export default function ClientRoster({ rows, mode = 'mixed' }: { rows: RosterRow[]; mode?: 'mixed' | 'individual' }) {
+export default function ClientRoster({
+  rows,
+  mode = 'mixed',
+  collaboratingIds,
+}: {
+  rows: RosterRow[]
+  mode?: 'mixed' | 'individual'
+  // Ids shown here because the firm collaborates on them (owned elsewhere).
+  collaboratingIds?: Set<string>
+}) {
   const t = useT()
 
   // For an individuals-only view the two right columns describe a person, not a
@@ -54,6 +63,11 @@ export default function ClientRoster({ rows, mode = 'mixed' }: { rows: RosterRow
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] font-medium text-gray-900 truncate">{c.name}</span>
+                  {collaboratingIds?.has(c.id) && (
+                    <span className="shrink-0 rounded-full border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-600">
+                      {t('admin.collaborating')}
+                    </span>
+                  )}
                   {c.year && <span className="text-[10px] font-medium text-gray-400 tabular-nums">· {c.year}</span>}
                   {dissolved && <span className="text-[10px] text-gray-400 capitalize">· {c.status}</span>}
                 </div>

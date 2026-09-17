@@ -161,6 +161,14 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
   const shownOrgIds = new Set(firmsWithRows.map((f) => f.id))
   const sharedRows = list.filter((c) => !c.org_id || !shownOrgIds.has(c.org_id))
 
+  // Firm-level collaboration: accounts a firm co-manages (owned by another firm)
+  // surface under that firm's roster too, marked "Collaborating".
+  const { data: firmCollabRows } = await createAdminClient().from('firm_collaborators').select('client_id, org_id')
+  const collabByFirm: Record<string, string[]> = {}
+  for (const r of (firmCollabRows ?? []) as { client_id: string; org_id: string }[]) {
+    ;(collabByFirm[r.org_id] ??= []).push(r.client_id)
+  }
+
   const firmLites: FirmLite[] = firmsWithRows.map((f) => ({ id: f.id, name: f.name, isPlatform: !!f.is_platform }))
 
   // Top-nav actions: New Firm is the highest-level action (platform only);
@@ -226,6 +234,7 @@ export default async function AdminHome({ searchParams }: { searchParams: { ok?:
             rows={toRows(list)}
             sharedRows={toRows(sharedRows)}
             archivedRows={toRows(archived)}
+            collabByFirm={collabByFirm}
             viewerRole={viewer?.role ?? null}
             isPlatform={isPlatform}
             leads={leads}

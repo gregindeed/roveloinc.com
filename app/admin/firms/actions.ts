@@ -177,6 +177,31 @@ export async function inviteFirmManager(orgId: string, formData: FormData) {
   else back('ok', r.existed ? `${email} already had an account and was added to this firm as a manager.` : `Invite sent to ${email}.`)
 }
 
+// Assign a whole firm as a collaborator on an account owned by another firm.
+// The account then appears on this firm's roster (marked) and its managers gain
+// read access. Platform admins manage firm-level collaborations.
+export async function addFirmCollaboration(orgId: string, formData: FormData) {
+  const viewer = await requirePlatform()
+  const clientId = String(formData.get('client_id') || '').trim()
+  if (!clientId) backToFirm(orgId, 'error', 'Pick an account to collaborate on.')
+  const admin = createAdminClient()
+  const { data: c } = await admin.from('clients').select('org_id').eq('id', clientId).maybeSingle()
+  if (!c) backToFirm(orgId, 'error', 'Account not found.')
+  if ((c as { org_id: string | null }).org_id === orgId) backToFirm(orgId, 'error', 'That account already belongs to this firm.')
+  const { error } = await admin.from('firm_collaborators').insert({ client_id: clientId, org_id: orgId, created_by: viewer.userId })
+  if (error && (error as { code?: string }).code !== '23505') backToFirm(orgId, 'error', `Could not add the collaboration: ${error.message}`)
+  revalidatePath(`/admin/firms/${orgId}`)
+  backToFirm(orgId, 'ok', 'Collaboration added.')
+}
+
+export async function removeFirmCollaboration(orgId: string, fcId: string) {
+  await requirePlatform()
+  const { error } = await createAdminClient().from('firm_collaborators').delete().eq('id', fcId).eq('org_id', orgId)
+  revalidatePath(`/admin/firms/${orgId}`)
+  if (error) backToFirm(orgId, 'error', `Could not remove the collaboration: ${error.message}`)
+  backToFirm(orgId, 'ok', 'Collaboration removed.')
+}
+
 // Turn the Property Management module on/off for a firm. Off by default. A
 // platform admin can toggle any firm; a firm's owner can toggle their own.
 export async function setFirmPropertyModule(orgId: string, formData: FormData) {

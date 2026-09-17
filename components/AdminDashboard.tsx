@@ -154,6 +154,7 @@ export default function AdminDashboard({
   rows,
   sharedRows,
   archivedRows,
+  collabByFirm,
   viewerRole,
   isPlatform,
   leads,
@@ -168,6 +169,8 @@ export default function AdminDashboard({
   rows: RosterRow[]
   sharedRows: RosterRow[]
   archivedRows: RosterRow[]
+  // orgId → client ids the firm collaborates on (owned by another firm).
+  collabByFirm: Record<string, string[]>
   viewerRole: string | null
   isPlatform: boolean
   leads: Lead[]
@@ -216,7 +219,13 @@ export default function AdminDashboard({
   // When scoped to one firm, the dropdown IS the section title — so we fold the
   // firm's badge, count, and ⋯ menu up beside it and drop the duplicate header.
   const selectedFirm = scope === 'all' ? null : firms.find((f) => f.id === scope) ?? null
-  const selectedCount = selectedFirm ? rows.filter((r) => r.orgId === selectedFirm.id && matchesKind(r)).length : 0
+  const selectedCount = selectedFirm
+    ? rows.filter(
+        (r) =>
+          matchesKind(r) &&
+          (r.orgId === selectedFirm.id || (collabByFirm[selectedFirm.id] ?? []).includes(r.id))
+      ).length
+    : 0
   const showFirmMeta = !!selectedFirm
 
   return (
@@ -263,7 +272,13 @@ export default function AdminDashboard({
       ) : (
         <div className="space-y-8">
           {firmsToShow.map((f) => {
-            const fr = rows.filter((r) => r.orgId === f.id && matchesKind(r))
+            const owned = rows.filter((r) => r.orgId === f.id && matchesKind(r))
+            const collabIds = collabByFirm[f.id] ?? []
+            const collab = collabIds.length
+              ? rows.filter((r) => r.orgId !== f.id && collabIds.includes(r.id) && matchesKind(r))
+              : []
+            const fr = [...owned, ...collab]
+            const collaboratingIds = collab.length ? new Set(collab.map((r) => r.id)) : undefined
             if (fr.length === 0 && scope === 'all') return null
             return (
               <div key={f.id}>
@@ -286,7 +301,7 @@ export default function AdminDashboard({
                     {kind === 'individual' ? t('admin.noIndividualsHere') : kind === 'business' ? t('admin.noBusinessesHere') : t('admin.noAccounts')}
                   </div>
                 ) : (
-                  <ClientRoster rows={fr} mode={rosterMode} />
+                  <ClientRoster rows={fr} mode={rosterMode} collaboratingIds={collaboratingIds} />
                 )}
               </div>
             )

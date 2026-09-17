@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import AuthHeader from '@/components/AuthHeader'
 import { requirePlatform } from '@/lib/auth'
-import { inviteFirmManager, resetManagerAccess, setFirmPropertyModule } from '../actions'
+import { inviteFirmManager, resetManagerAccess, setFirmPropertyModule, addFirmCollaboration, removeFirmCollaboration } from '../actions'
 import Avatar from '@/components/Avatar'
 import { isOnline } from '@/lib/presence'
 import { getLocale } from '@/lib/i18n-server'
@@ -54,6 +54,29 @@ export default async function FirmProperties({
     }
   })
   const accounts = (clients ?? []).filter((c) => !c.archived_at)
+
+  // Firm-level collaborations: accounts (owned by other firms) this firm
+  // co-manages, plus the pool of accounts it could be assigned to.
+  const [{ data: collabRows }, { data: allClients }] = await Promise.all([
+    admin.from('firm_collaborators').select('id, client_id').eq('org_id', params.id),
+    admin.from('clients').select('id, name, org_id').is('archived_at', null).order('name'),
+  ])
+  const clientById = new Map((allClients ?? []).map((c) => [c.id as string, c as { id: string; name: string; org_id: string | null }]))
+  const orgNameById = new Map((await admin.from('organizations').select('id, name')).data?.map((o) => [o.id as string, o.name as string]) ?? [])
+  const collaborations = (collabRows ?? []).map((r) => {
+    const c = clientById.get(r.client_id as string)
+    return {
+      id: r.id as string,
+      clientId: r.client_id as string,
+      name: c?.name ?? '(removed account)',
+      ownerFirm: c?.org_id ? orgNameById.get(c.org_id) ?? '' : '',
+    }
+  })
+  const collabClientIds = new Set(collaborations.map((c) => c.clientId))
+  // Assignable = active accounts owned by a different firm, not already collaborated.
+  const assignable = (allClients ?? []).filter(
+    (c) => c.org_id !== params.id && !collabClientIds.has(c.id as string)
+  ) as { id: string; name: string; org_id: string | null }[]
 
   return (
     <div className="min-h-screen bg-white">
@@ -143,6 +166,50 @@ export default async function FirmProperties({
             />
             <button className="text-sm font-medium text-gray-900 hover:text-gray-500 transition-colors">{t(locale, 'team.sendInvite')}</button>
           </form>
+        </div>
+
+        {/* Collaborations — accounts owned by other firms that this firm co-manages */}
+        <div className="mt-6 rounded-xl border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-900">Collaborations</h2>
+          <p className="mt-0.5 mb-3 text-xs text-gray-500">
+            Accounts owned by another firm that this firm co-manages. They appear on this firm&apos;s roster marked &ldquo;Collaborating,&rdquo; and its managers gain access.
+          </p>
+          {collaborations.length > 0 ? (
+            <div className="mb-3 space-y-1.5">
+              {collaborations.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-[13px] text-gray-800">{c.name}</div>
+                    {c.ownerFirm && <div className="text-[11px] text-gray-400">owned by {c.ownerFirm}</div>}
+                  </div>
+                  <form action={removeFirmCollaboration.bind(null, firm.id, c.id)}>
+                    <button className="shrink-0 text-[11px] text-gray-400 transition-colors hover:text-red-600">Remove</button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mb-3 text-xs text-gray-400">No collaborations yet.</p>
+          )}
+          {assignable.length > 0 && (
+            <form action={addFirmCollaboration.bind(null, firm.id)} className="flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3">
+              <select
+                name="client_id"
+                required
+                defaultValue=""
+                className="min-w-[220px] flex-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+              >
+                <option value="" disabled>Choose an account…</option>
+                {assignable.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                    {c.org_id ? ` · ${orgNameById.get(c.org_id) ?? ''}` : ''}
+                  </option>
+                ))}
+              </select>
+              <button className="text-sm font-medium text-gray-900 transition-colors hover:text-gray-500">Add collaboration</button>
+            </form>
+          )}
         </div>
 
         {/* Modules — access to optional areas, off by default */}
