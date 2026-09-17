@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import LeadStageSelect from './LeadStageSelect'
+import { useT } from './I18nProvider'
 import { type Lead } from '@/lib/leads'
 
 // The leads pipeline, rendered inline in the dashboard as a table that matches
@@ -24,17 +25,18 @@ export default function LeadsPanel({
   convertLead: (leadId: string) => void | Promise<void>
   deleteLead: (leadId: string) => void | Promise<void>
 }) {
+  const t = useT()
   const open = leads.filter((l) => l.stage !== 'won' && l.stage !== 'lost').length
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-gray-400">Prospective accounts you haven&apos;t onboarded yet. {open} open.</p>
-        <div className="flex items-center gap-4">
-          <Link href="/admin/leads/new" className="text-sm font-medium text-gray-900 transition-colors hover:text-gray-500">
-            + Add lead
+        <div className="flex items-center gap-3.5">
+          <Link href="/admin/leads/new" className="text-xs font-medium text-gray-900 transition-colors hover:text-gray-500">
+            + {t('admin.addLead')}
           </Link>
-          <Link href={importHref} className="text-sm font-medium text-gray-500 transition-colors hover:text-gray-900">
+          <Link href={importHref} className="text-xs font-medium text-gray-500 transition-colors hover:text-gray-900">
             Import from a file →
           </Link>
         </div>

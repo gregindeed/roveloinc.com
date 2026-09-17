@@ -48,11 +48,13 @@ function TabControl({
   onTab,
   businessLabel,
   individualLabel,
+  leadsLabel,
 }: {
   tab: TabKind
   onTab: (t: TabKind) => void
   businessLabel: string
   individualLabel: string
+  leadsLabel: string
 }) {
   const pill = (value: TabKind, text: string) => (
     <button type="button" aria-pressed={tab === value} onClick={() => tab !== value && onTab(value)} className={kindPill(tab === value)}>
@@ -63,7 +65,7 @@ function TabControl({
     <div className="inline-flex items-center rounded-full bg-gray-100 p-0.5 text-[11px] font-medium">
       {pill('business', businessLabel)}
       {pill('individual', individualLabel)}
-      {pill('leads', 'Leads')}
+      {pill('leads', leadsLabel)}
     </div>
   )
 }
@@ -224,7 +226,7 @@ export default function AdminDashboard({
         <div className="flex items-center gap-2.5 min-w-0">
           {isLeads ? (
             <span className="text-xl leading-none text-gray-900" style={{ fontFamily: 'var(--font-fraunces), serif', fontWeight: 700, letterSpacing: '-0.03em' }}>
-              Leads
+              {t('admin.leads')}
             </span>
           ) : (
             <>
@@ -244,7 +246,7 @@ export default function AdminDashboard({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <TabControl tab={tab} onTab={setTabP} businessLabel={t('admin.filterBusinesses')} individualLabel={t('admin.filterIndividuals')} />
+          <TabControl tab={tab} onTab={setTabP} businessLabel={t('admin.filterBusinesses')} individualLabel={t('admin.filterIndividuals')} leadsLabel={t('admin.leads')} />
         </div>
       </div>
 
